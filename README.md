@@ -176,15 +176,30 @@ It does **not** provide licensed financial advice. The app includes disclaimer g
 
 Users should review major money decisions with a **SEBI-registered advisor** or another relevant licensed professional.
 
-## Demo Suggestions
+## Screenshots
 
-For demos or hackathon judging, a good flow is:
+<img width="1900" height="907" alt="image" src="https://github.com/user-attachments/assets/094ff59d-b9b8-48e5-9840-c26aa485526c" />
 
-1. Open the landing page
-2. Show the FIRE Planner using a realistic mid-career professional scenario
-3. Demonstrate how changing one input updates the plan
-4. Switch to Money Health Score and show the broader wellness view
-5. Highlight the combination of planning logic + AI guidance + disclaimers
+<img width="1901" height="906" alt="image" src="https://github.com/user-attachments/assets/14a03018-7f73-4b28-90b1-7f0a46babf25" />
+
+<img width="1895" height="908" alt="image" src="https://github.com/user-attachments/assets/fdc8c445-4e48-4890-b7f7-e8d47ed6e3f3" />
+
+<img width="1902" height="908" alt="image" src="https://github.com/user-attachments/assets/acc757b6-78bd-4253-82cb-fd99bf48b0ae" />
+
+<img width="1895" height="907" alt="image" src="https://github.com/user-attachments/assets/59a5f830-d801-4aaf-821c-cc9a03bbcfc5" />
+
+<img width="1897" height="907" alt="image" src="https://github.com/user-attachments/assets/7da53101-158d-414e-88b3-43fe683a663f" />
+
+<img width="1897" height="907" alt="image" src="https://github.com/user-attachments/assets/851f330f-e06a-448f-bacd-e073b3e8d4e6" />
+
+<img width="1893" height="915" alt="image" src="https://github.com/user-attachments/assets/77784073-f50b-475d-85f6-87a836d96679" />
+
+<img width="1893" height="905" alt="image" src="https://github.com/user-attachments/assets/ae2e0e8a-d0e4-4733-89a4-d57b8607e529" />
+
+<img width="1900" height="906" alt="image" src="https://github.com/user-attachments/assets/3d76e4f5-9131-4035-9311-0b8abfa31f09" />
+
+<img width="1907" height="921" alt="image" src="https://github.com/user-attachments/assets/4ab1648e-0644-445e-a637-95ec30915d63" />
+
 
 ## Troubleshooting
 
