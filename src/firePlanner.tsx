@@ -218,7 +218,7 @@ function getPrintableHtml(
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>MoneyMentor FIRE Plan</title>
+    <title>Firo FIRE Plan</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 40px; color: #10223a; }
       h1, h2, h3 { margin-bottom: 8px; }
@@ -235,7 +235,7 @@ function getPrintableHtml(
     </style>
   </head>
   <body>
-    <h1>MoneyMentor FIRE Plan</h1>
+    <h1>Firo FIRE Plan</h1>
     <p class="muted">Prepared for age ${inputs.age}, retirement target ${inputs.retirementAge}.</p>
 
     <div class="grid">
@@ -313,7 +313,17 @@ function getPrintableHtml(
 </html>`;
 }
 
-export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
+export function FirePlannerPage({
+  onGoHome,
+  onOpenFirePlanner,
+  onOpenMoneyHealth,
+  onMount,
+}: {
+  onGoHome: () => void;
+  onOpenFirePlanner?: () => void;
+  onOpenMoneyHealth?: () => void;
+  onMount?: () => void;
+}) {
   const [inputs, setInputs] = useState<FireInputs>(fireDefaults);
   const [draftInputs, setDraftInputs] = useState<FireDraftInputs>(() =>
     buildDraftFromInputs(fireDefaults),
@@ -334,6 +344,10 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
   const [originalRetirementDrawCustomized, setOriginalRetirementDrawCustomized] =
     useState<boolean | null>(null);
   const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    onMount?.();
+  }, [onMount]);
 
   const draftParsedInputs = useMemo(
     () => parseDraftInputs(draftInputs),
@@ -504,11 +518,27 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
                 <path d="M13.2 2 6.8 13h4.5l-1.1 9L17.2 11h-4.4L13.2 2Z" fill="currentColor" />
               </svg>
             </span>
-            <span className="brand-text">MoneyMentor</span>
+            <span className="brand-text">Firo</span>
           </button>
 
           <div className="planner-nav-actions">
             <span className="planner-tag">FIRE Planner</span>
+            <div className="feature-switcher" role="tablist" aria-label="Feature navigation">
+              <button
+                className="feature-switcher-tab active"
+                type="button"
+                onClick={onOpenFirePlanner ?? (() => {})}
+              >
+                FIRE Planner
+              </button>
+              <button
+                className="feature-switcher-tab"
+                type="button"
+                onClick={onOpenMoneyHealth}
+              >
+                Money Health Score
+              </button>
+            </div>
             <button className="ghost-link" type="button" onClick={onGoHome}>
               Back to Home
             </button>
@@ -547,13 +577,6 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
                   Back to plan
                 </button>
               ) : null}
-              <button
-                className="button button-primary planner-button"
-                type="button"
-                onClick={handleGenerate}
-              >
-                {hasSubmitted ? "Update FIRE plan" : "Generate FIRE plan"}
-              </button>
             </div>
 
             <div className="fire-form-sections">
@@ -868,6 +891,16 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
                   ))}
                 </div>
               </InputSection>
+            </div>
+
+            <div className="fire-form-submit">
+              <button
+                className="button button-primary planner-button"
+                type="button"
+                onClick={handleGenerate}
+              >
+                {hasSubmitted ? "Update FIRE plan" : "Generate FIRE plan"}
+              </button>
             </div>
           </div>
         </aside> : null}

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   generateMoneyHealthGuidance,
   type MoneyHealthGuidanceResult,
@@ -158,8 +158,14 @@ function getScoreTone(score: number) {
 
 export function MoneyHealthScorePage({
   onGoHome,
+  onOpenFirePlanner,
+  onOpenMoneyHealth,
+  onMount,
 }: {
   onGoHome: () => void;
+  onOpenFirePlanner?: () => void;
+  onOpenMoneyHealth?: () => void;
+  onMount?: () => void;
 }) {
   const [draftInputs, setDraftInputs] = useState<MoneyHealthDraftInputs>(() =>
     buildDraftFromInputs(moneyHealthDefaults),
@@ -171,6 +177,10 @@ export function MoneyHealthScorePage({
   const [formAttempted, setFormAttempted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    onMount?.();
+  }, [onMount]);
 
   const parsedInputs = useMemo(() => parseDraftInputs(draftInputs), [draftInputs]);
   const validation = useMemo(
@@ -227,11 +237,27 @@ export function MoneyHealthScorePage({
                 <path d="M13.2 2 6.8 13h4.5l-1.1 9L17.2 11h-4.4L13.2 2Z" fill="currentColor" />
               </svg>
             </span>
-            <span className="brand-text">MoneyMentor</span>
+            <span className="brand-text">Firo</span>
           </button>
 
           <div className="planner-nav-actions">
             <span className="planner-tag">Money Health Score</span>
+            <div className="feature-switcher" role="tablist" aria-label="Feature navigation">
+              <button
+                className="feature-switcher-tab"
+                type="button"
+                onClick={onOpenFirePlanner}
+              >
+                FIRE Planner
+              </button>
+              <button
+                className="feature-switcher-tab active"
+                type="button"
+                onClick={onOpenMoneyHealth ?? (() => {})}
+              >
+                Money Health Score
+              </button>
+            </div>
             <button className="ghost-link" type="button" onClick={onGoHome}>
               Back to Home
             </button>
@@ -272,13 +298,6 @@ export function MoneyHealthScorePage({
                     Back to score
                   </button>
                 ) : null}
-                <button
-                  className="button button-primary planner-button"
-                  type="button"
-                  onClick={handleGenerate}
-                >
-                  {submittedInputs ? "Refresh score" : "Generate score"}
-                </button>
               </div>
             </aside>
 
@@ -462,6 +481,16 @@ export function MoneyHealthScorePage({
                     />
                   </div>
                 </HealthFormSection>
+              </div>
+
+              <div className="fire-form-submit">
+                <button
+                  className="button button-primary planner-button"
+                  type="button"
+                  onClick={handleGenerate}
+                >
+                  {submittedInputs ? "Refresh score" : "Generate score"}
+                </button>
               </div>
             </section>
           </section>
