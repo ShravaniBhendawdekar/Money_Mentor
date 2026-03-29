@@ -1,8 +1,10 @@
 import type { FireInputs, PortfolioInputs, TaxInputs } from "./finance";
+import type { MoneyHealthInputs } from "./moneyHealth";
 
 export const fireDefaults: FireInputs = {
   age: 34,
   retirementAge: 50,
+  lifeExpectancy: 90,
   annualIncome: 2_400_000,
   monthlyExpenses: 95_000,
   currentMfCorpus: 1_800_000,
@@ -32,6 +34,26 @@ export const taxDefaults: TaxInputs = {
   nps: 50_000,
   homeLoanInterest: 40_000,
   otherDeductions: 0,
+};
+
+export const moneyHealthDefaults: MoneyHealthInputs = {
+  age: 34,
+  annualIncome: 2_400_000,
+  monthlyExpenses: 95_000,
+  dependents: 2,
+  targetRetirementAge: 50,
+  liquidSavings: 300_000,
+  currentLifeCover: 5_000_000,
+  healthInsuranceCover: 500_000,
+  equityInvestments: 1_800_000,
+  debtInvestments: 300_000,
+  retirementInvestments: 600_000,
+  currentMonthlySip: 45_000,
+  monthlyEmis: 18_000,
+  highInterestDebt: 0,
+  liabilities: 2_000_000,
+  annualTaxSavingInvestments: 120_000,
+  annualHealthInsurancePremium: 18_000,
 };
 
 export const portfolioDefaults: PortfolioInputs = {

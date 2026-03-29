@@ -22,6 +22,7 @@ type FireDraftExpense = {
 type FireDraftInputs = {
   age: string;
   retirementAge: string;
+  lifeExpectancy: string;
   annualIncome: string;
   monthlyExpenses: string;
   currentMfCorpus: string;
@@ -59,6 +60,7 @@ function buildDraftFromInputs(
   return {
     age: String(inputs.age),
     retirementAge: String(inputs.retirementAge),
+    lifeExpectancy: String(inputs.lifeExpectancy),
     annualIncome: String(inputs.annualIncome),
     monthlyExpenses: String(inputs.monthlyExpenses),
     currentMfCorpus: String(inputs.currentMfCorpus),
@@ -109,6 +111,7 @@ function parseDraftInputs(draft: FireDraftInputs): FireInputs {
     ...fireDefaults,
     age: parseNumber(draft.age, fireDefaults.age),
     retirementAge: parseNumber(draft.retirementAge, fireDefaults.retirementAge),
+    lifeExpectancy: parseNumber(draft.lifeExpectancy, fireDefaults.lifeExpectancy),
     annualIncome: parseNumber(draft.annualIncome, fireDefaults.annualIncome),
     monthlyExpenses: parseNumber(draft.monthlyExpenses, fireDefaults.monthlyExpenses),
     currentMfCorpus: parseNumber(draft.currentMfCorpus, fireDefaults.currentMfCorpus),
@@ -489,25 +492,6 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
     }));
   };
 
-  const laterInputs = useMemo(
-    () => ({
-      ...inputs,
-      retirementAge: Math.min(inputs.retirementAge + 5, 70),
-    }),
-    [inputs],
-  );
-  const laterPlan = useMemo(() => computeFirePlan(laterInputs), [laterInputs]);
-  const leanerInputs = useMemo(
-    () => ({
-      ...inputs,
-      targetMonthlyDrawToday: Math.max(
-        Math.round(inputs.targetMonthlyDrawToday * 0.9),
-        25_000,
-      ),
-    }),
-    [inputs],
-  );
-  const leanerPlan = useMemo(() => computeFirePlan(leanerInputs), [leanerInputs]);
   const isFormMode = !hasSubmitted || isEditing;
 
   return (
@@ -598,6 +582,19 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
                   />
                 </div>
                 <div className="fire-field-grid two-up">
+                  <NumericField
+                    label="Life expectancy"
+                    value={draftInputs.lifeExpectancy}
+                    placeholder="90"
+                    inputMode="numeric"
+                    helper="Plan till at least age 85 to 90 to account for longevity risk."
+                    onChange={(value) => setFieldValue("lifeExpectancy", value)}
+                    {...getFieldState(
+                      draftValidation,
+                      "lifeExpectancy",
+                      shouldShowValidation,
+                    )}
+                  />
                   <NumericField
                     label="Dependents"
                     value={draftInputs.dependents}
@@ -943,13 +940,10 @@ export function FirePlannerPage({ onGoHome }: { onGoHome: () => void }) {
 
               {activeTab === "roadmap" ? (
                 <div className="fire-tab-panel">
-                  <RoadmapPanel
-                    inputs={inputs}
-                    plan={plan}
-                    laterPlan={laterPlan}
-                    laterInputs={laterInputs}
-                    leanerPlan={leanerPlan}
-                  />
+                <RoadmapPanel
+                  inputs={inputs}
+                  plan={plan}
+                />
                 </div>
               ) : null}
 
@@ -1141,6 +1135,9 @@ function OverviewHero({ plan, inputs }: { plan: FirePlan; inputs: FireInputs }) 
           {inr(plan.assumptions.retirementDrawAtRetirement)} per month at retirement
           and building about {compactInr(plan.targetCorpus)}.
         </p>
+        <div className={`fire-decision-banner ${plan.decision.status}`}>
+          {plan.decision.message}
+        </div>
 
         <div className="fire-metric-grid">
           <MetricTile
@@ -1166,9 +1163,9 @@ function OverviewHero({ plan, inputs }: { plan: FirePlan; inputs: FireInputs }) 
             helper="Using the post-retirement return assumption"
           />
           <MetricTile
-            label="Take-home load"
-            value={formatPercent(plan.takeHomeFeasibility.requiredSipShare * 100)}
-            helper={`${inr(plan.requiredSip)} out of ${inr(plan.takeHomeFeasibility.monthlyTakeHome)} estimated monthly take-home`}
+            label="Income load"
+            value={formatPercent(plan.takeHomeFeasibility.requiredSipShareOfIncome * 100)}
+            helper={`${inr(plan.requiredSip)} out of ${inr(plan.takeHomeFeasibility.grossMonthlyIncome)} monthly income`}
           />
         </div>
       </section>
@@ -1342,6 +1339,14 @@ function LiveTuningPanel({
           {...getFieldState(draftValidation, "annualIncome", shouldShowValidation)}
         />
         <NumericField
+          label="Life expectancy"
+          value={draftInputs.lifeExpectancy}
+          placeholder="90"
+          inputMode="numeric"
+          onChange={(value) => setFieldValue("lifeExpectancy", value)}
+          {...getFieldState(draftValidation, "lifeExpectancy", shouldShowValidation)}
+        />
+        <NumericField
           label="Existing MF corpus"
           value={draftInputs.currentMfCorpus}
           placeholder="1800000"
@@ -1358,15 +1363,9 @@ function LiveTuningPanel({
 function RoadmapPanel({
   inputs,
   plan,
-  laterPlan,
-  laterInputs,
-  leanerPlan,
 }: {
   inputs: FireInputs;
   plan: FirePlan;
-  laterPlan: FirePlan;
-  laterInputs: FireInputs;
-  leanerPlan: FirePlan;
 }) {
   const phases = [
     {
@@ -1390,32 +1389,15 @@ function RoadmapPanel({
     <div className="fire-panel-stack">
       <SectionCard title="Practical ways to improve the plan" kicker="Roadmap">
         <div className="fire-scenario-grid">
-          <ScenarioCard
-            label="Current target"
-            title={`Retire at ${inputs.retirementAge}`}
-            highlight={inr(plan.requiredSip)}
-            helper={`Current path reaches age ${plan.estimatedRetirementAgeOnCurrentPath}.`}
-          />
-          <ScenarioCard
-            label="Retire 5 years later"
-            title={`Retire at ${laterInputs.retirementAge}`}
-            highlight={inr(laterPlan.requiredSip)}
-            helper={`Monthly need drops by ${Math.max(
-              0,
-              Math.round(
-                ((plan.requiredSip - laterPlan.requiredSip) / Math.max(plan.requiredSip, 1)) *
-                  100,
-              ),
-            )}%.`}
-          />
-          <ScenarioCard
-            label="Lower retirement draw by 10%"
-            title="Lean spending target"
-            highlight={inr(leanerPlan.requiredSip)}
-            helper={`The required SIP falls from ${inr(plan.requiredSip)} to ${inr(
-              leanerPlan.requiredSip,
-            )}.`}
-          />
+          {plan.scenarios.map((scenario) => (
+            <ScenarioCard
+              key={scenario.id}
+              label={scenario.label}
+              title={`Retirement age ${scenario.retirementAgePossible}`}
+              highlight={inr(scenario.sip)}
+              helper={scenario.message}
+            />
+          ))}
         </div>
       </SectionCard>
 
@@ -1447,7 +1429,7 @@ function RoadmapPanel({
             <MetricTile
               label="Year 10 SIP"
               value={inr(plan.stepUpSipPlan.yearTenSip)}
-              helper="Household SIP by year 10"
+              helper="Target monthly SIP by year 10"
             />
           </div>
         </SectionCard>
@@ -1635,10 +1617,18 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
   const width = 920;
   const height = 360;
   const padding = { top: 26, right: 32, bottom: 48, left: 54 };
-  const allPoints = [...plan.chartSeries.currentPath, ...plan.chartSeries.targetPath];
-  const maxValue = Math.max(...allPoints.map((point) => point.corpus), plan.targetCorpus, 1);
+  const allPoints = [
+    ...plan.chartSeries.currentPath,
+    ...plan.chartSeries.targetPath,
+    ...plan.chartSeries.conservativePath,
+  ];
+  const maxValue = Math.max(
+    ...allPoints.map((point) => point.corpus),
+    plan.chartSeries.goalCorpus,
+    1,
+  );
   const minAge = plan.chartSeries.currentPath[0]?.age ?? 0;
-  const retirementAge = minAge + plan.yearsToRetire;
+  const retirementAge = plan.chartSeries.retirementAge;
   const maxAge = plan.chartSeries.horizonAge;
 
   const pointToX = (age: number) =>
@@ -1661,6 +1651,7 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
 
   const currentPath = buildPath(plan.chartSeries.currentPath);
   const targetPath = buildPath(plan.chartSeries.targetPath);
+  const conservativePath = buildPath(plan.chartSeries.conservativePath);
   const yLabels = [1, 0.66, 0.33, 0].map((ratio) => compactInr(maxValue * ratio));
   const currentExhaustionPoint = plan.chartSeries.currentPath.find(
     (point, index) =>
@@ -1670,17 +1661,22 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
     (point, index) =>
       index === plan.chartSeries.targetPath.length - 1 && point.corpus === 0,
   );
+  const conservativeExhaustionPoint = plan.chartSeries.conservativePath.find(
+    (point, index) =>
+      index === plan.chartSeries.conservativePath.length - 1 && point.corpus === 0,
+  );
 
   return (
     <div className="fire-chart-card">
       <div className="fire-chart-head">
         <div>
           <span className="eyebrow">Trajectory</span>
-          <h4>Current path vs recommended path</h4>
+          <h4>Current, recommended, and conservative path</h4>
         </div>
         <div className="fire-chart-legend">
           <span><i className="legend-dot recommended" /> Recommended path</span>
           <span><i className="legend-dot current" /> Current path</span>
+          <span><i className="legend-dot conservative" /> Conservative path</span>
         </div>
       </div>
 
@@ -1708,6 +1704,22 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
         })}
 
         <line
+          x1={padding.left}
+          x2={width - padding.right}
+          y1={pointToY(plan.chartSeries.goalCorpus)}
+          y2={pointToY(plan.chartSeries.goalCorpus)}
+          className="fire-goal-line"
+        />
+        <text
+          x={width - padding.right}
+          y={pointToY(plan.chartSeries.goalCorpus) - 8}
+          textAnchor="end"
+          className="fire-axis-label"
+        >
+          Goal corpus
+        </text>
+
+        <line
           x1={pointToX(plan.chartSeries.currentPath[0]?.age ?? 0)}
           x2={pointToX(plan.chartSeries.currentPath[0]?.age ?? 0)}
           y1={padding.top}
@@ -1721,9 +1733,18 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
           y2={height - padding.bottom}
           className="fire-vertical-guide active"
         />
+        <text
+          x={pointToX(retirementAge)}
+          y={padding.top - 6}
+          textAnchor="middle"
+          className="fire-axis-label"
+        >
+          Retirement starts
+        </text>
 
         <path d={targetPath} className="fire-line recommended" />
         <path d={currentPath} className="fire-line current" />
+        <path d={conservativePath} className="fire-line conservative" />
 
         {plan.chartSeries.expenseMarkers.map((marker) => (
           marker.age <= plan.chartSeries.horizonAge ? (
@@ -1779,7 +1800,29 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
             textAnchor="middle"
             className="fire-axis-label"
           >
-            Recommended path ends at age {Math.round(targetExhaustionPoint.age)}
+            Goal path ends at age {Math.round(targetExhaustionPoint.age)}
+          </text>
+        ) : null}
+        {conservativeExhaustionPoint ? (
+          <text
+            x={pointToX(conservativeExhaustionPoint.age)}
+            y={pointToY(conservativeExhaustionPoint.corpus) - 38}
+            textAnchor="middle"
+            className="fire-axis-label"
+          >
+            Conservative path ends at age {Math.round(conservativeExhaustionPoint.age)}
+          </text>
+        ) : null}
+
+        {plan.chartSeries.currentExhaustionAge &&
+        plan.chartSeries.currentExhaustionAge < plan.chartSeries.lifeExpectancy ? (
+          <text
+            x={pointToX(plan.chartSeries.currentExhaustionAge)}
+            y={height - padding.bottom + 26}
+            textAnchor="middle"
+            className="fire-axis-label"
+          >
+            You run out of money here
           </text>
         ) : null}
 
@@ -1798,7 +1841,7 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
           </text>
         ))}
 
-        {[minAge, retirementAge, plan.chartSeries.horizonAge].map((age) => (
+        {[minAge, retirementAge, plan.chartSeries.lifeExpectancy].map((age) => (
           <text
             key={age}
             x={pointToX(age)}
@@ -1813,7 +1856,8 @@ function FireTrajectoryChart({ plan }: { plan: FirePlan }) {
 
       <div className="fire-chart-footnote">
         Planned expenses are inflated to their year of occurrence and deducted from the
-        corpus before growth resumes.
+        corpus before growth resumes. Post-retirement drawdown uses a real-return view
+        so the corpus declines smoothly after retirement begins.
       </div>
     </div>
   );

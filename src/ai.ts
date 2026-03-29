@@ -5,6 +5,7 @@ import {
   type FireInputs,
   type FirePlan,
 } from "./finance";
+import { type MoneyHealthInputs, type MoneyHealthPlan } from "./moneyHealth";
 
 export type FireGuidanceResult = {
   source: "gemini" | "fallback";
@@ -14,6 +15,13 @@ export type FireGuidanceResult = {
     nextActions: string[];
     disclaimer: string;
   };
+};
+
+export type MoneyHealthGuidanceResult = {
+  source: "gemini" | "fallback";
+  coachLine: string;
+  priorities: string[];
+  rationale: string[];
 };
 
 export async function generateFireGuidance(
@@ -98,11 +106,84 @@ export async function generateFireGuidance(
   }
 }
 
+export async function generateMoneyHealthGuidance(
+  inputs: MoneyHealthInputs,
+  plan: MoneyHealthPlan,
+): Promise<MoneyHealthGuidanceResult> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const model = import.meta.env.VITE_GEMINI_MODEL ?? "gemini-2.5-flash";
+  const fallback = buildMoneyHealthFallback(inputs, plan);
+
+  if (!apiKey) {
+    return { source: "fallback", ...fallback };
+  }
+
+  try {
+    const prompt = [
+      "You are an Indian personal finance wellness coach.",
+      "Use only the facts below.",
+      "Every line must contain at least one real number from the facts.",
+      "Do not invent products, liabilities, or deductions that are not in the facts.",
+      "Return plain text in exactly this format:",
+      "COACH_LINE:",
+      "one short sentence",
+      "PRIORITIES:",
+      "- bullet 1",
+      "- bullet 2",
+      "- bullet 3",
+      "RATIONALE:",
+      "- bullet 1",
+      "- bullet 2",
+      "",
+      "FACTS:",
+      ...buildMoneyHealthFactSheet(inputs, plan),
+    ].join("\n");
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      return { source: "fallback", ...fallback };
+    }
+
+    const data = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+
+    const text = data.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("\n")
+      .trim();
+
+    if (!text) {
+      return { source: "fallback", ...fallback };
+    }
+
+    const parsed = parseMoneyHealthResponse(text, fallback);
+    if (!isGroundedMoneyHealthResponse(parsed)) {
+      return { source: "fallback", ...fallback };
+    }
+
+    return { source: "gemini", ...parsed };
+  } catch {
+    return { source: "fallback", ...fallback };
+  }
+}
+
 function buildFactSheet(inputs: FireInputs, plan: FirePlan) {
   const lines = [
     `Current age: ${inputs.age}`,
     `Target retirement age: ${inputs.retirementAge}`,
     `Years to retire: ${plan.yearsToRetire}`,
+    `Life expectancy: ${inputs.lifeExpectancy}`,
     `Annual income: ${inr(inputs.annualIncome)}`,
     `Monthly expenses: ${inr(inputs.monthlyExpenses)}`,
     `Retirement draw today: ${inr(plan.assumptions.retirementDrawToday)}`,
@@ -117,6 +198,8 @@ function buildFactSheet(inputs: FireInputs, plan: FirePlan) {
     `Required SIP: ${inr(plan.requiredSip)} per month`,
     `Current SIP: ${inr(plan.currentSip)} per month`,
     `Current path retirement age: ${plan.estimatedRetirementAgeOnCurrentPath}`,
+    `Decision status: ${plan.decision.status}`,
+    `Decision insight: ${plan.decision.message}`,
     `Emergency fund target: ${inr(plan.emergencyFund.target)}`,
     `Emergency fund gap: ${inr(plan.emergencyFund.gap)}`,
     `Primary cover target: ${inr(plan.insurance.primaryTarget)}`,
@@ -265,5 +348,105 @@ function buildFallbackSummary(
     ],
     disclaimer:
       "Guidance only, not licensed investment advice. Review big portfolio and insurance decisions with a SEBI-registered advisor.",
+  };
+}
+
+function buildMoneyHealthFactSheet(
+  inputs: MoneyHealthInputs,
+  plan: MoneyHealthPlan,
+) {
+  return [
+    `Overall score: ${plan.overallScore}`,
+    `Grade: ${plan.grade}`,
+    `Biggest opportunity: ${plan.biggestOpportunity}`,
+    `Age: ${inputs.age}`,
+    `Annual income: ${inr(inputs.annualIncome)}`,
+    `Monthly expenses: ${inr(inputs.monthlyExpenses)}`,
+    `Dependents: ${inputs.dependents}`,
+    `Target retirement age: ${inputs.targetRetirementAge}`,
+    `Liquid savings: ${inr(inputs.liquidSavings)}`,
+    `Emergency fund target: ${inr(plan.metrics.emergencyTarget)}`,
+    `Emergency fund gap: ${inr(plan.metrics.emergencyGap)}`,
+    `Current life cover: ${inr(inputs.currentLifeCover)}`,
+    `Life cover target: ${inr(plan.metrics.lifeCoverTarget)}`,
+    `Health cover: ${inr(inputs.healthInsuranceCover)}`,
+    `Health cover target: ${inr(plan.metrics.healthCoverTarget)}`,
+    `Current SIP: ${inr(inputs.currentMonthlySip)}`,
+    `Retirement target corpus: ${inr(plan.metrics.retirementTargetCorpus)}`,
+    `Retirement path age: ${plan.metrics.retirementCurrentPathAge}`,
+    `Retirement required SIP: ${inr(plan.metrics.retirementRequiredSip)}`,
+    `Monthly EMIs: ${inr(inputs.monthlyEmis)}`,
+    `High-interest debt: ${inr(inputs.highInterestDebt)}`,
+    `Liabilities: ${inr(inputs.liabilities)}`,
+    `Tax savings used: ${inr(plan.metrics.taxSavingsUsed)}`,
+    `Tax savings target: ${inr(plan.metrics.taxSavingsTarget)}`,
+    ...plan.dimensions.map(
+      (dimension) => `${dimension.label} score: ${dimension.score}/100`,
+    ),
+  ];
+}
+
+function parseMoneyHealthResponse(
+  response: string,
+  fallback: Omit<MoneyHealthGuidanceResult, "source">,
+): Omit<MoneyHealthGuidanceResult, "source"> {
+  const coachLine =
+    response.match(/COACH_LINE:([\s\S]*?)(?:PRIORITIES:|RATIONALE:|$)/i)?.[1]
+      ?.trim()
+      .replace(/\s+/g, " ") || fallback.coachLine;
+  const priorities = extractGenericBullets(response, "PRIORITIES");
+  const rationale = extractGenericBullets(response, "RATIONALE");
+
+  return {
+    coachLine,
+    priorities: priorities.length ? priorities : fallback.priorities,
+    rationale: rationale.length ? rationale : fallback.rationale,
+  };
+}
+
+function extractGenericBullets(text: string, label: string) {
+  const sectionRegex = new RegExp(
+    `${label}:([\\s\\S]*?)(?:COACH_LINE:|PRIORITIES:|RATIONALE:|$)`,
+    "i",
+  );
+  const match = text.match(sectionRegex)?.[1] ?? "";
+  return match
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("-"))
+    .map((line) => line.replace(/^-+\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function isGroundedMoneyHealthResponse(
+  guidance: Omit<MoneyHealthGuidanceResult, "source">,
+) {
+  const lines = [guidance.coachLine, ...guidance.priorities, ...guidance.rationale];
+  if (lines.some((line) => !/\d/.test(line))) {
+    return false;
+  }
+
+  const bannedPhrases = ["market volatility", "stay disciplined", "keep learning"];
+  return !lines.some((line) =>
+    bannedPhrases.some((phrase) => line.toLowerCase().includes(phrase)),
+  );
+}
+
+function buildMoneyHealthFallback(
+  inputs: MoneyHealthInputs,
+  plan: MoneyHealthPlan,
+): Omit<MoneyHealthGuidanceResult, "source"> {
+  const weakest = [...plan.dimensions].sort((a, b) => a.score - b.score)[0];
+  return {
+    coachLine: `Your score is ${plan.overallScore}/100, and ${weakest.label.toLowerCase()} is the biggest upgrade lever right now.`,
+    priorities: [
+      `Build the emergency reserve toward ${inr(plan.metrics.emergencyTarget)}; the current gap is ${inr(plan.metrics.emergencyGap)}.`,
+      `Close the retirement gap by moving the SIP from ${inr(inputs.currentMonthlySip)} toward about ${inr(plan.metrics.retirementRequiredSip)}.`,
+      `Use another ${inr(Math.max(plan.metrics.taxSavingsTarget - plan.metrics.taxSavingsUsed, 0))} of common tax-saving capacity this year.`,
+    ],
+    rationale: [
+      `Emergency preparedness scores ${plan.dimensions.find((item) => item.id === "emergency")?.score ?? 0}/100 because liquid savings cover ${plan.metrics.emergencyMonths.toFixed(1)} months of expenses.`,
+      `Retirement readiness scores ${plan.dimensions.find((item) => item.id === "retirement")?.score ?? 0}/100 because the current path points to age ${plan.metrics.retirementCurrentPathAge} against a target of ${inputs.targetRetirementAge}.`,
+    ],
   };
 }

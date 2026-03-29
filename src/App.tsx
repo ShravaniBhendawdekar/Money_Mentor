@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { FirePlannerPage } from "./firePlanner";
+import { MoneyHealthScorePage } from "./moneyHealthScore";
 
-type Page = "home" | "fire";
+type Page = "home" | "fire" | "health";
 
 const tools = [
   {
@@ -57,12 +58,22 @@ const reasonsForTrust = [
 
 export default function App() {
   const [page, setPage] = useState<Page>(() =>
-    window.location.hash === "#fire-planner" ? "fire" : "home",
+    window.location.hash === "#fire-planner"
+      ? "fire"
+      : window.location.hash === "#money-health-score"
+        ? "health"
+        : "home",
   );
 
   useEffect(() => {
     const handleHashChange = () => {
-      setPage(window.location.hash === "#fire-planner" ? "fire" : "home");
+      setPage(
+        window.location.hash === "#fire-planner"
+          ? "fire"
+          : window.location.hash === "#money-health-score"
+            ? "health"
+            : "home",
+      );
     };
 
     window.addEventListener("hashchange", handleHashChange);
@@ -70,19 +81,35 @@ export default function App() {
   }, []);
 
   const navigate = (nextPage: Page) => {
-    window.location.hash = nextPage === "fire" ? "fire-planner" : "home";
+    window.location.hash =
+      nextPage === "fire"
+        ? "fire-planner"
+        : nextPage === "health"
+          ? "money-health-score"
+          : "home";
     window.scrollTo({ top: 0, behavior: "smooth" });
     setPage(nextPage);
   };
 
   return page === "home" ? (
-    <LandingPage onOpenFirePlanner={() => navigate("fire")} />
-  ) : (
+    <LandingPage
+      onOpenFirePlanner={() => navigate("fire")}
+      onOpenMoneyHealth={() => navigate("health")}
+    />
+  ) : page === "fire" ? (
     <FirePlannerPage onGoHome={() => navigate("home")} />
+  ) : (
+    <MoneyHealthScorePage onGoHome={() => navigate("home")} />
   );
 }
 
-function LandingPage({ onOpenFirePlanner }: { onOpenFirePlanner: () => void }) {
+function LandingPage({
+  onOpenFirePlanner,
+  onOpenMoneyHealth,
+}: {
+  onOpenFirePlanner: () => void;
+  onOpenMoneyHealth: () => void;
+}) {
   return (
     <div className="page">
       <header className="site-header">
@@ -126,9 +153,9 @@ function LandingPage({ onOpenFirePlanner }: { onOpenFirePlanner: () => void }) {
                 <button className="button button-primary" type="button" onClick={onOpenFirePlanner}>
                   Start Your FIRE Plan
                 </button>
-                <a className="button button-secondary" href="#why">
+                <button className="button button-secondary" type="button" onClick={onOpenMoneyHealth}>
                   Check Money Health Score
-                </a>
+                </button>
               </div>
             </div>
 
@@ -208,7 +235,15 @@ function LandingPage({ onOpenFirePlanner }: { onOpenFirePlanner: () => void }) {
               <article key={tool.title} className={`tool-card ${tool.accent}`}>
                 <h3>{tool.title}</h3>
                 <p>{tool.description}</p>
-                <button className="inline-link" type="button" onClick={onOpenFirePlanner}>
+                <button
+                  className="inline-link"
+                  type="button"
+                  onClick={
+                    tool.title === "Money Health Score"
+                      ? onOpenMoneyHealth
+                      : onOpenFirePlanner
+                  }
+                >
                   Try Now
                 </button>
               </article>

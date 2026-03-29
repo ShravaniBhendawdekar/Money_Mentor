@@ -6,6 +6,7 @@ export type PlannedExpenseInput = {
 export type FireInputs = {
   age: number;
   retirementAge: number;
+  lifeExpectancy: number;
   annualIncome: number;
   monthlyExpenses: number;
   currentMfCorpus: number;
@@ -53,6 +54,7 @@ export type FireExpenseMarker = {
 export type FirePlan = {
   yearsToRetire: number;
   retirementYear: number;
+  yearsAfterRetirement: number;
   targetMonthlyAtRetirement: number;
   targetCorpus: number;
   projectedCorpusWithoutChanges: number;
@@ -80,17 +82,21 @@ export type FirePlan = {
     primaryGap: number;
   };
   takeHomeFeasibility: {
+    grossMonthlyIncome: number;
     primaryMonthlyTakeHome: number;
     monthlyTakeHome: number;
+    requiredSipShareOfIncome: number;
     requiredSipShare: number;
     projectedMonthlyTakeHomeInYear5: number;
     projectedSipShareInYear5: number;
     isStretched: boolean;
+    isNotFeasible: boolean;
   };
   longevity: {
     lastsUntilAge: number;
     status: "critical" | "watch" | "strong";
     exhaustionAge: number | null;
+    targetReachedLifeExpectancy: boolean;
   };
   stepUpSipPlan: {
     yearOneSip: number;
@@ -107,11 +113,16 @@ export type FirePlan = {
   }>;
   chartSeries: {
     horizonAge: number;
+    retirementAge: number;
+    lifeExpectancy: number;
+    goalCorpus: number;
     currentPath: FireChartPoint[];
     targetPath: FireChartPoint[];
+    conservativePath: FireChartPoint[];
     expenseMarkers: FireExpenseMarker[];
     currentExhaustionAge: number | null;
     targetExhaustionAge: number | null;
+    conservativeExhaustionAge: number | null;
   };
   glidepath: Array<{
     age: number;
@@ -137,6 +148,21 @@ export type FirePlan = {
   taxSavingMoves: Array<{
     title: string;
     detail: string;
+  }>;
+  decision: {
+    status: "on_track" | "behind" | "not_feasible";
+    retirementAgePossible: number;
+    sipRequired: number;
+    message: string;
+  };
+  scenarios: Array<{
+    id: "current" | "recommended" | "conservative";
+    label: string;
+    retirementAgePossible: number;
+    sip: number;
+    corpusAtRetirement: number;
+    status: "on_track" | "behind" | "not_feasible";
+    message: string;
   }>;
   sensitivity: {
     lowerReturnAssumption: number;
@@ -253,6 +279,18 @@ export function validateFireInputs(inputs: FireInputs): FireValidation {
     const message = "Retirement age above 75 is unusual for a FIRE plan. Double-check the target.";
     warnings.push(message);
     pushFieldMessage("retirementAge", "warnings", message);
+  }
+
+  if (inputs.lifeExpectancy <= inputs.retirementAge) {
+    const message = "Life expectancy must be higher than retirement age.";
+    errors.push(message);
+    pushFieldMessage("lifeExpectancy", "errors", message);
+  }
+
+  if (inputs.lifeExpectancy < 85) {
+    const message = "Life expectancy below 85 may understate longevity risk.";
+    warnings.push(message);
+    pushFieldMessage("lifeExpectancy", "warnings", message);
   }
 
   if (inputs.annualIncome <= 0) {
@@ -383,6 +421,7 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
   const currentYear = new Date().getFullYear();
   const yearsToRetire = Math.max(inputs.retirementAge - inputs.age, 1);
   const retirementYear = currentYear + yearsToRetire;
+  const yearsAfterRetirement = Math.max(inputs.lifeExpectancy - inputs.retirementAge, 1);
   const targetMonthlyAtRetirement = round(
     inputs.targetMonthlyDrawToday * Math.pow(1 + inputs.inflationRate, yearsToRetire),
   );
@@ -443,6 +482,7 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
     startingCorpus: recommendedAccumulation.endingCorpus,
     startAge: inputs.retirementAge,
     startYear: retirementYear,
+    lifeExpectancy: inputs.lifeExpectancy,
     annualReturn: inputs.postRetirementReturn,
     inflationRate: inputs.inflationRate,
     startingAnnualSpend: targetMonthlyAtRetirement * 12,
@@ -452,6 +492,7 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
     startingCorpus: currentPathAccumulation.endingCorpus,
     startAge: inputs.retirementAge,
     startYear: retirementYear,
+    lifeExpectancy: inputs.lifeExpectancy,
     annualReturn: inputs.postRetirementReturn,
     inflationRate: inputs.inflationRate,
     startingAnnualSpend: targetMonthlyAtRetirement * 12,
@@ -479,12 +520,16 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
     inputs.annualIncome * Math.pow(1 + inputs.annualIncomeGrowthRate, 4),
   );
   const projectedMonthlyTakeHomeInYear5 = round(projectedPrimaryTakeHomeInYear5);
+  const grossMonthlyIncome = round(inputs.annualIncome / 12);
+  const requiredSipShareOfIncome =
+    grossMonthlyIncome > 0 ? requiredSip / grossMonthlyIncome : 0;
   const requiredSipShare =
     primaryMonthlyTakeHome > 0 ? requiredSip / primaryMonthlyTakeHome : 0;
   const projectedSipShareInYear5 =
     projectedMonthlyTakeHomeInYear5 > 0
       ? requiredSip / projectedMonthlyTakeHomeInYear5
       : 0;
+  const isNotFeasible = requiredSipShareOfIncome > 0.4;
   const stepUpSipPlan = buildStepUpSipPlan({
     targetCorpus,
     initialCorpus: retirementCorpusBase,
@@ -495,6 +540,10 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
     expenseMap: accumulationExpenses,
   });
   const lowerReturnAssumption = Math.max(inputs.preRetirementReturn - 0.02, 0.02);
+  const conservativePostRetirementReturn = Math.max(
+    inputs.postRetirementReturn - 0.02,
+    0.01,
+  );
   const lowerReturnRetirementAge = solveAgeToTarget({
     initialCorpus: retirementCorpusBase,
     startAge: inputs.age,
@@ -504,7 +553,37 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
     monthlySip: currentSip,
     expenseMap: accumulationExpenses,
   });
-  const horizonAge = Math.max(inputs.retirementAge + 20, 90);
+  const conservativeRequiredSip = round(
+    findRequiredImmediateSip({
+      targetCorpus,
+      initialCorpus: retirementCorpusBase,
+      startAge: inputs.age,
+      startYear: currentYear,
+      yearsToRetire,
+      annualReturn: lowerReturnAssumption,
+      expenseMap: accumulationExpenses,
+    }),
+  );
+  const conservativeAccumulation = simulateAccumulation({
+    initialCorpus: retirementCorpusBase,
+    startAge: inputs.age,
+    startYear: currentYear,
+    years: yearsToRetire,
+    annualReturn: lowerReturnAssumption,
+    getMonthlySip: () => conservativeRequiredSip,
+    expenseMap: accumulationExpenses,
+  });
+  const conservativeDrawdown = simulateDrawdown({
+    startingCorpus: conservativeAccumulation.endingCorpus,
+    startAge: inputs.retirementAge,
+    startYear: retirementYear,
+    lifeExpectancy: inputs.lifeExpectancy,
+    annualReturn: conservativePostRetirementReturn,
+    inflationRate: inputs.inflationRate,
+    startingAnnualSpend: targetMonthlyAtRetirement * 12,
+    expenseMap: retirementExpenses,
+  });
+  const horizonAge = Math.max(inputs.lifeExpectancy, inputs.retirementAge + 5);
   const glidepath = buildGlidepath(inputs.age, inputs.retirementAge);
   const sipAllocation = buildSipAllocation(requiredSip, glidepath[0]?.equity ?? 50);
   const monthlyRoadmap = buildMonthlyRoadmap({
@@ -516,10 +595,71 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
     insuranceGap: Math.max(primaryCoverTarget - inputs.currentLifeCover, 0),
   });
   const taxSavingMoves = buildTaxSavingMoves(sipAllocation);
+  const retirementAgePossible = isNotFeasible
+    ? solveFeasibleRetirementAge({
+        inputs,
+        initialCorpus: retirementCorpusBase,
+        currentYear,
+        expenseMap: accumulationExpenses,
+        monthlyIncomeCap: grossMonthlyIncome * 0.4,
+      })
+    : estimatedRetirementAgeOnCurrentPath;
+  const currentStatus =
+    currentSip >= requiredSip && currentPathDrawdown.lastsUntilAge >= inputs.lifeExpectancy
+      ? ("on_track" as const)
+      : isNotFeasible
+        ? ("not_feasible" as const)
+        : ("behind" as const);
+  const decisionStatus = isNotFeasible
+    ? ("not_feasible" as const)
+    : currentStatus === "on_track"
+      ? ("on_track" as const)
+      : ("behind" as const);
+  const decisionMessage = isNotFeasible
+    ? `You cannot retire at ${inputs.retirementAge} with a required SIP of ${inr(requiredSip)} because that is ${formatPercent(requiredSipShareOfIncome * 100)} of your monthly income. Delay retirement toward age ${Math.round(retirementAgePossible)}, reduce retirement spending, or use the ${formatPercent(stepUpSipPlan.annualIncreaseRate * 100)} step-up SIP path starting at ${inr(stepUpSipPlan.yearOneSip)}.`
+    : currentStatus === "on_track"
+      ? `You are on track for age ${inputs.retirementAge}. Keep the monthly SIP near ${inr(requiredSip)} and the corpus is projected to last until age ${recommendedDrawdown.lastsUntilAge}.`
+      : `You are behind the target for age ${inputs.retirementAge}. At the current SIP of ${inr(currentSip)}, retirement lands closer to age ${estimatedRetirementAgeOnCurrentPath}. Increase SIP by ${inr(Math.max(requiredSip - currentSip, 0))}, reduce retirement spending, or step up gradually from ${inr(stepUpSipPlan.yearOneSip)}.`;
+  const scenarios: FirePlan["scenarios"] = [
+    {
+      id: "current",
+      label: "Current plan",
+      retirementAgePossible: estimatedRetirementAgeOnCurrentPath,
+      sip: round(currentSip),
+      corpusAtRetirement: round(currentPathAccumulation.endingCorpus),
+      status: currentStatus,
+      message:
+        currentStatus === "on_track"
+          ? `Current SIP already supports age ${inputs.retirementAge}.`
+          : `Current SIP reaches the target closer to age ${estimatedRetirementAgeOnCurrentPath}.`,
+    },
+    {
+      id: "recommended",
+      label: "Recommended plan",
+      retirementAgePossible: inputs.retirementAge,
+      sip: requiredSip,
+      corpusAtRetirement: round(recommendedAccumulation.endingCorpus),
+      status: isNotFeasible ? "not_feasible" : "on_track",
+      message: isNotFeasible
+        ? `The direct SIP of ${inr(requiredSip)} is too high relative to income.`
+        : `This SIP gets you to age ${inputs.retirementAge} with the target corpus.`,
+    },
+    {
+      id: "conservative",
+      label: "Conservative plan",
+      retirementAgePossible: Math.max(inputs.retirementAge, lowerReturnRetirementAge),
+      sip: conservativeRequiredSip,
+      corpusAtRetirement: round(conservativeAccumulation.endingCorpus),
+      status:
+        conservativeRequiredSip > grossMonthlyIncome * 0.4 ? "not_feasible" : "behind",
+      message: `At ${formatPercent(lowerReturnAssumption * 100)} accumulation returns, the plan needs about ${inr(conservativeRequiredSip)} per month.`,
+    },
+  ];
 
   return {
     yearsToRetire,
     retirementYear,
+    yearsAfterRetirement,
     targetMonthlyAtRetirement,
     targetCorpus,
     projectedCorpusWithoutChanges: round(currentPathAccumulation.endingCorpus),
@@ -550,28 +690,41 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
       primaryGap: round(Math.max(primaryCoverTarget - inputs.currentLifeCover, 0)),
     },
     takeHomeFeasibility: {
+      grossMonthlyIncome,
       primaryMonthlyTakeHome: round(primaryMonthlyTakeHome),
       monthlyTakeHome: round(primaryMonthlyTakeHome),
+      requiredSipShareOfIncome,
       requiredSipShare,
       projectedMonthlyTakeHomeInYear5,
       projectedSipShareInYear5,
       isStretched: requiredSipShare > 0.6,
+      isNotFeasible,
     },
     longevity: {
       lastsUntilAge: recommendedDrawdown.lastsUntilAge,
       status: recommendedDrawdown.status,
       exhaustionAge: recommendedDrawdown.exhaustionAge,
+      targetReachedLifeExpectancy:
+        recommendedDrawdown.exhaustionAge === null ||
+        recommendedDrawdown.exhaustionAge >= inputs.lifeExpectancy,
     },
     stepUpSipPlan,
     plannedExpenseSchedule,
     chartSeries: {
       horizonAge,
+      retirementAge: inputs.retirementAge,
+      lifeExpectancy: inputs.lifeExpectancy,
+      goalCorpus: targetCorpus,
       currentPath: trimChartSeries(
         [...currentPathAccumulation.points, ...currentPathDrawdown.points],
         horizonAge,
       ),
       targetPath: trimChartSeries(
         [...recommendedAccumulation.points, ...recommendedDrawdown.points],
+        horizonAge,
+      ),
+      conservativePath: trimChartSeries(
+        [...conservativeAccumulation.points, ...conservativeDrawdown.points],
         horizonAge,
       ),
       expenseMarkers: plannedExpenseSchedule.map((expense) => ({
@@ -582,11 +735,19 @@ export function computeFirePlan(inputs: FireInputs): FirePlan {
       })),
       currentExhaustionAge: currentPathDrawdown.exhaustionAge,
       targetExhaustionAge: recommendedDrawdown.exhaustionAge,
+      conservativeExhaustionAge: conservativeDrawdown.exhaustionAge,
     },
     glidepath,
     sipAllocation,
     monthlyRoadmap,
     taxSavingMoves,
+    decision: {
+      status: decisionStatus,
+      retirementAgePossible,
+      sipRequired: requiredSip,
+      message: decisionMessage,
+    },
+    scenarios,
     sensitivity: {
       lowerReturnAssumption,
       lowerReturnRetirementAge,
@@ -686,6 +847,7 @@ function simulateDrawdown({
   startingCorpus,
   startAge,
   startYear,
+  lifeExpectancy,
   annualReturn,
   inflationRate,
   startingAnnualSpend,
@@ -694,6 +856,7 @@ function simulateDrawdown({
   startingCorpus: number;
   startAge: number;
   startYear: number;
+  lifeExpectancy: number;
   annualReturn: number;
   inflationRate: number;
   startingAnnualSpend: number;
@@ -701,10 +864,11 @@ function simulateDrawdown({
 }) {
   const points: FireChartPoint[] = [];
   let corpus = Math.max(startingCorpus, 0);
-  let annualSpend = startingAnnualSpend;
+  const annualSpend = startingAnnualSpend;
+  const realReturn = (1 + annualReturn) / (1 + inflationRate) - 1;
   let exhaustionAge: number | null = null;
 
-  for (let yearOffset = 0; startAge + yearOffset < 100; yearOffset += 1) {
+  for (let yearOffset = 0; startAge + yearOffset < lifeExpectancy; yearOffset += 1) {
     const currentAge = startAge + yearOffset;
     const simulationYear = startYear + yearOffset;
     corpus = Math.max(corpus - (expenseMap.get(simulationYear) ?? 0), 0);
@@ -715,8 +879,7 @@ function simulateDrawdown({
       break;
     }
 
-    corpus = corpus * (1 + annualReturn);
-    corpus -= annualSpend;
+    corpus = Math.max(corpus * (1 + realReturn) - annualSpend, 0);
 
     if (corpus <= 0) {
       exhaustionAge = currentAge + 1;
@@ -729,11 +892,9 @@ function simulateDrawdown({
       year: simulationYear + 1,
       corpus: round(corpus),
     });
-
-    annualSpend *= 1 + inflationRate;
   }
 
-  const lastsUntilAge = exhaustionAge ?? 100;
+  const lastsUntilAge = exhaustionAge ?? lifeExpectancy;
   return {
     points,
     exhaustionAge,
@@ -829,8 +990,25 @@ function findRequiredImmediateSip({
     return 0;
   }
 
+  const months = Math.max(yearsToRetire * 12, 1);
+  const monthlyRate = getMonthlyRate(annualReturn);
+  const futureExistingCorpus = simulateAccumulation({
+    initialCorpus,
+    startAge,
+    startYear,
+    years: yearsToRetire,
+    annualReturn,
+    getMonthlySip: () => 0,
+    expenseMap,
+  }).endingCorpus;
+  const netGap = Math.max(targetCorpus - futureExistingCorpus, 0);
+  const sipFactor =
+    monthlyRate === 0
+      ? months
+      : (((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate) * (1 + monthlyRate));
+
   let low = 0;
-  let high = 25_000;
+  let high = Math.max(netGap / Math.max(sipFactor, 1), 25_000);
 
   while (simulate(high) < targetCorpus && high < 5_000_000) {
     high *= 2;
@@ -846,6 +1024,50 @@ function findRequiredImmediateSip({
   }
 
   return high;
+}
+
+function solveFeasibleRetirementAge({
+  inputs,
+  initialCorpus,
+  currentYear,
+  expenseMap,
+  monthlyIncomeCap,
+}: {
+  inputs: FireInputs;
+  initialCorpus: number;
+  currentYear: number;
+  expenseMap: Map<number, number>;
+  monthlyIncomeCap: number;
+}) {
+  for (
+    let candidateAge = inputs.retirementAge;
+    candidateAge <= inputs.lifeExpectancy;
+    candidateAge += 1
+  ) {
+    const candidateYears = Math.max(candidateAge - inputs.age, 1);
+    const candidateTargetMonthly = round(
+      inputs.targetMonthlyDrawToday *
+        Math.pow(1 + inputs.inflationRate, candidateYears),
+    );
+    const candidateCorpus = round(
+      (candidateTargetMonthly * 12) / Math.max(inputs.safeWithdrawalRate, 0.01),
+    );
+    const candidateSip = findRequiredImmediateSip({
+      targetCorpus: candidateCorpus,
+      initialCorpus,
+      startAge: inputs.age,
+      startYear: currentYear,
+      yearsToRetire: candidateYears,
+      annualReturn: inputs.preRetirementReturn,
+      expenseMap,
+    });
+
+    if (candidateSip <= monthlyIncomeCap) {
+      return candidateAge;
+    }
+  }
+
+  return inputs.lifeExpectancy;
 }
 
 function buildStepUpSipPlan({
