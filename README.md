@@ -212,6 +212,4 @@ npm run build
 npm run dev
 ```
 
-## Status
 
-This repository is currently a hackathon/prototype-style product build. Add your preferred license and deployment details before public release.
