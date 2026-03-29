@@ -1,40 +1,58 @@
 # Firo
 
-Firo is an AI-assisted personal finance web app built for a hackathon use case. It helps users understand their money from two angles:
+Firo is a modern AI-assisted personal finance web app designed to make financial planning feel clear, actionable, and less intimidating.
 
-- `FIRE Path Planner`: builds a financial independence roadmap with retirement corpus planning, SIP guidance, glidepath shifts, insurance gaps, emergency fund targets, and dynamic scenario updates.
-- `Money Health Score`: gives a quick financial wellness score across emergency preparedness, insurance coverage, investment diversification, debt health, tax efficiency, and retirement readiness.
+It currently includes two core experiences:
 
-The product is built as a modern React + TypeScript + Vite application with an optional Gemini integration for grounded AI guidance.
+- **FIRE Path Planner**  
+  A dynamic retirement-planning experience that turns income, expenses, savings, and life goals into a practical path to financial independence.
 
-## What The App Does
+- **Money Health Score**  
+  A guided financial wellness check that scores a user across emergency preparedness, insurance, investing, debt, tax efficiency, and retirement readiness.
 
-### 1. FIRE Path Planner
-- Collects the user’s financial profile, current savings, retirement target, and assumptions.
-- Calculates retirement corpus using inflation-adjusted expenses and a safe withdrawal rate.
-- Computes required SIP, current-path retirement age, emergency reserve target, life cover gap, and retirement longevity.
-- Generates a month-by-month roadmap and fund-category allocation split.
-- Updates the plan dynamically when the user changes live planning controls.
-- Supports AI guidance with a deterministic fallback if Gemini is unavailable.
+## Why Firo
 
-### 2. Money Health Score
-- Runs a short onboarding flow to assess financial wellness.
-- Produces an overall score and grade.
-- Scores 6 dimensions:
-  - Emergency preparedness
-  - Insurance coverage
-  - Investment diversification
-  - Debt health
-  - Tax efficiency
-  - Retirement readiness
-- Surfaces top actions and AI-backed coaching guidance.
+Most finance tools either feel too technical or too shallow. Firo is built to sit in the middle:
+
+- clear enough for everyday users
+- structured enough for product demos and hackathon judging
+- practical enough to generate real next steps instead of just charts
+
+## Features
+
+### FIRE Path Planner
+
+- Input-led planning flow
+- Retirement corpus estimation using inflation-adjusted expenses
+- SIP requirement calculation
+- Current-path retirement age estimate
+- Emergency fund target and gap analysis
+- Insurance gap analysis
+- Asset allocation glidepath
+- Month-by-month roadmap
+- Dynamic updates when key values change
+- AI-assisted planning summary with deterministic fallback
+
+### Money Health Score
+
+- Quick onboarding flow
+- Overall money health score and grade
+- 6-dimension financial wellness assessment:
+  - emergency preparedness
+  - insurance coverage
+  - investment diversification
+  - debt health
+  - tax efficiency
+  - retirement readiness
+- AI coach summary
+- Top-priority action recommendations
 
 ## Tech Stack
 
-- `React 18`
-- `TypeScript`
-- `Vite`
-- Optional `Gemini API` for AI-generated insights
+- React 18
+- TypeScript
+- Vite
+- Optional Gemini API integration
 
 ## Project Structure
 
@@ -47,49 +65,32 @@ src/
   moneyHealth.ts         # Money Health scoring logic and validation
   ai.ts                  # Gemini integration + deterministic fallback guidance
   data.ts                # Default/sample input data
-  styles.css             # Global styling and component visuals
+  styles.css             # Global styles and UI system
   main.tsx               # App entry point
 ```
 
 ## Requirements
 
-See [requirements.txt](C:\Users\Lenovo\Documents\New project\requirements.txt) for the environment/runtime requirements.
+See [requirements.txt](./requirements.txt).
 
-In short, you need:
+You will typically need:
 
-- `Node.js 18+`
-- `npm 9+`
+- Node.js 18+
+- npm 9+
 - A modern browser
-- An optional Gemini API key for live AI guidance
+- Optional Gemini API key for live AI guidance
 
-## Environment Variables
-
-Create a local `.env` file in the project root if you want AI guidance from Gemini.
-
-Example:
-
-```env
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
-VITE_GEMINI_MODEL=gemini-2.5-flash
-```
-
-Notes:
-
-- If no API key is present, the app still works.
-- In that case, it uses deterministic fallback guidance instead of Gemini output.
-- Because this is a Vite frontend app, `VITE_` prefixes are required.
-
-## How To Run The Project
+## Getting Started
 
 ### 1. Install dependencies
 
-```powershell
+```bash
 npm install
 ```
 
 ### 2. Start the development server
 
-```powershell
+```bash
 npm run dev
 ```
 
@@ -99,102 +100,118 @@ Vite will print a local URL, usually:
 http://localhost:5173
 ```
 
-Open that in your browser.
-
 ### 3. Build for production
 
-```powershell
+```bash
 npm run build
 ```
 
 ### 4. Preview the production build
 
-```powershell
+```bash
 npm run preview
 ```
+
+## Environment Variables
+
+If you want live AI guidance, create a local `.env` file in the project root:
+
+```env
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
+VITE_GEMINI_MODEL=gemini-2.5-flash
+```
+
+### Notes
+
+- If no Gemini key is configured, the app still works.
+- In that case, it uses deterministic fallback guidance.
+- Because this is a Vite app, custom env vars must start with `VITE_`.
 
 ## Available Scripts
 
 - `npm run dev`  
-  Starts the Vite development server.
+  Starts the development server.
 
 - `npm run build`  
-  Runs TypeScript build checks and creates the production build.
+  Runs TypeScript checks and creates a production build.
 
 - `npm run preview`  
-  Serves the built app locally for preview.
+  Serves the production build locally.
 
-## App Flow
+## Product Flow
 
-### Landing page
-- Premium-style home page introducing the two implemented features.
-- Navigation between home, FIRE Planner, and Money Health Score.
+### Landing Page
 
-### FIRE Planner flow
-1. User fills the input form.
-2. The app shows a generating state.
-3. The app renders the results dashboard.
-4. Users can adjust live controls and see updated planning output.
+- Presents the Firo product and the two implemented features
+- Lets users enter either planning flow from a product-style interface
 
-### Money Health Score flow
-1. User fills the score onboarding form.
-2. The app shows a scoring/loading state.
-3. The app renders the score dashboard and action recommendations.
+### FIRE Path Planner
+
+1. User enters financial inputs
+2. App generates the plan
+3. User sees corpus, SIP, glidepath, roadmap, and AI-backed insights
+4. User can adjust values and update the plan dynamically
+
+### Money Health Score
+
+1. User enters a short financial profile
+2. App generates the score
+3. User sees overall score, dimension-level breakdown, and prioritized actions
 
 ## AI Behavior
 
-The app uses `src/ai.ts` for both FIRE and Money Health guidance.
+Both implemented features use AI-assisted guidance through `src/ai.ts`.
 
 Behavior:
 
-- If Gemini is configured, the app requests structured guidance.
-- If Gemini is missing, fails, or returns weak/generic output, the app falls back to deterministic text built from actual calculated values.
-- This keeps the experience reliable during demos and hackathon judging.
+- If Gemini is configured, the app requests structured guidance
+- If Gemini is missing or fails, the app falls back to deterministic plan-backed content
+- The app includes guardrails to distinguish AI guidance from licensed financial advice
 
-## Important Notes
+## Guardrails
 
-- This is an educational planning tool, not licensed financial advice.
-- The UI is optimized for a modern product-style experience rather than a plain calculator.
-- Some assumptions are intentionally configurable so the planning logic remains auditable.
+Firo is an educational planning tool.
 
-## Suggested Demo Path
+It does **not** provide licensed financial advice. The app includes disclaimer guardrails throughout the product to distinguish AI-generated guidance from regulated investment, insurance, and tax advice.
 
-For a hackathon demo, a good flow is:
+Users should review major money decisions with a **SEBI-registered advisor** or another relevant licensed professional.
 
-1. Open the Firo landing page.
-2. Enter the FIRE Planner with the sample mid-career professional scenario.
-3. Show dynamic input changes and updated retirement outcomes.
-4. Switch to Money Health Score and show the broader financial wellness view.
-5. Highlight how both features combine planning + AI guidance.
+## Demo Suggestions
+
+For demos or hackathon judging, a good flow is:
+
+1. Open the landing page
+2. Show the FIRE Planner using a realistic mid-career professional scenario
+3. Demonstrate how changing one input updates the plan
+4. Switch to Money Health Score and show the broader wellness view
+5. Highlight the combination of planning logic + AI guidance + disclaimers
 
 ## Troubleshooting
 
-### App runs but AI guidance does not appear
-- Check that `.env` exists in the project root.
-- Ensure `VITE_GEMINI_API_KEY` is present.
-- Restart the Vite dev server after editing `.env`.
+### AI guidance is not appearing
 
-### Build issues
-- Make sure `node_modules` is installed:
+- Check that `.env` exists in the project root
+- Check that `VITE_GEMINI_API_KEY` is set
+- Restart the dev server after changing env values
 
-```powershell
+### Build errors
+
+Run:
+
+```bash
 npm install
-```
-
-- Then retry:
-
-```powershell
 npm run build
 ```
 
-### Old UI still appears
-- Refresh the browser.
-- If needed, stop and restart the dev server:
+### UI changes are not visible
 
-```powershell
+- Refresh the browser
+- Restart the dev server if needed:
+
+```bash
 npm run dev
 ```
 
-## License / Usage
+## Status
 
-This repository is currently project code for a hackathon-style prototype. Add your preferred license before public distribution.
+This repository is currently a hackathon/prototype-style product build. Add your preferred license and deployment details before public release.
