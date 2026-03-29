@@ -7,15 +7,20 @@ export const fireDefaults: FireInputs = {
   monthlyExpenses: 95_000,
   currentMfCorpus: 1_800_000,
   currentPpfCorpus: 600_000,
-  targetMonthlyDrawToday: 150_000,
+  epfCorpus: 0,
+  currentLiquidSavings: 0,
+  targetMonthlyDrawToday: 95_000,
   currentMonthlySip: 45_000,
+  annualIncomeGrowthRate: 0.08,
   inflationRate: 0.06,
   preRetirementReturn: 0.12,
   postRetirementReturn: 0.07,
   safeWithdrawalRate: 0.04,
   currentLifeCover: 5_000_000,
-  healthCover: 1_000_000,
+  hasPureTermPlan: true,
   liabilities: 2_000_000,
+  dependents: 0,
+  plannedExpenses: [],
 };
 
 export const taxDefaults: TaxInputs = {

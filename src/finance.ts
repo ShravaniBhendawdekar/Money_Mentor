@@ -1,3 +1,8 @@
+export type PlannedExpenseInput = {
+  amountToday: number;
+  year: number;
+};
+
 export type FireInputs = {
   age: number;
   retirementAge: number;
@@ -5,51 +10,138 @@ export type FireInputs = {
   monthlyExpenses: number;
   currentMfCorpus: number;
   currentPpfCorpus: number;
+  epfCorpus: number;
+  currentLiquidSavings: number;
   targetMonthlyDrawToday: number;
   currentMonthlySip: number;
+  annualIncomeGrowthRate: number;
   inflationRate: number;
   preRetirementReturn: number;
   postRetirementReturn: number;
   safeWithdrawalRate: number;
   currentLifeCover: number;
-  healthCover: number;
+  hasPureTermPlan: boolean;
   liabilities: number;
+  dependents: number;
+  plannedExpenses: PlannedExpenseInput[];
 };
 
-export type FirePlan = {
-  yearsToRetire: number;
-  targetMonthlyAtRetirement: number;
-  targetCorpus: number;
-  projectedCorpusWithoutChanges: number;
-  requiredSip: number;
-  estimatedRetirementAgeOnCurrentPath: number;
-  emergencyFundTarget: number;
-  emergencyFundGap: number;
-  lifeCoverTarget: number;
-  lifeCoverGap: number;
-  monthByMonth: Array<{
-    month: number;
-    age: number;
-    equitySip: number;
-    debtSip: number;
-    equityWeight: number;
-    debtWeight: number;
-    projectedCorpus: number;
-  }>;
+type FieldMessages = {
+  errors: string[];
+  warnings: string[];
 };
 
 export type FireValidation = {
   errors: string[];
   warnings: string[];
-  fields: Partial<
-    Record<
-      keyof FireInputs,
-      {
-        errors: string[];
-        warnings: string[];
-      }
-    >
-  >;
+  fields: Record<string, FieldMessages>;
+};
+
+export type FireChartPoint = {
+  age: number;
+  year: number;
+  corpus: number;
+};
+
+export type FireExpenseMarker = {
+  age: number;
+  year: number;
+  label: string;
+  phase: "accumulation" | "retirement";
+};
+
+export type FirePlan = {
+  yearsToRetire: number;
+  retirementYear: number;
+  targetMonthlyAtRetirement: number;
+  targetCorpus: number;
+  projectedCorpusWithoutChanges: number;
+  recommendedCorpusAtRetirement: number;
+  requiredSip: number;
+  currentSip: number;
+  estimatedRetirementAgeOnCurrentPath: number;
+  assumptions: {
+    preRetirementReturn: number;
+    postRetirementReturn: number;
+    inflationRate: number;
+    safeWithdrawalRate: number;
+    incomeGrowthRate: number;
+    retirementDrawToday: number;
+    retirementDrawAtRetirement: number;
+  };
+  emergencyFund: {
+    target: number;
+    currentLiquidSavings: number;
+    gap: number;
+    note?: string;
+  };
+  insurance: {
+    primaryTarget: number;
+    primaryGap: number;
+  };
+  takeHomeFeasibility: {
+    primaryMonthlyTakeHome: number;
+    monthlyTakeHome: number;
+    requiredSipShare: number;
+    projectedMonthlyTakeHomeInYear5: number;
+    projectedSipShareInYear5: number;
+    isStretched: boolean;
+  };
+  longevity: {
+    lastsUntilAge: number;
+    status: "critical" | "watch" | "strong";
+    exhaustionAge: number | null;
+  };
+  stepUpSipPlan: {
+    yearOneSip: number;
+    annualIncreaseRate: number;
+    yearTenSip: number;
+    reachesTarget: boolean;
+  };
+  plannedExpenseSchedule: Array<{
+    year: number;
+    age: number;
+    amountToday: number;
+    inflatedAmount: number;
+    phase: "accumulation" | "retirement";
+  }>;
+  chartSeries: {
+    horizonAge: number;
+    currentPath: FireChartPoint[];
+    targetPath: FireChartPoint[];
+    expenseMarkers: FireExpenseMarker[];
+    currentExhaustionAge: number | null;
+    targetExhaustionAge: number | null;
+  };
+  glidepath: Array<{
+    age: number;
+    ageLabel: string;
+    equity: number;
+    debt: number;
+    action: string;
+    current?: boolean;
+  }>;
+  sipAllocation: {
+    total: number;
+    equityWeight: number;
+    debtWeight: number;
+    buckets: Array<{ label: string; amount: number; tone: "purple" | "slate" }>;
+  };
+  monthlyRoadmap: Array<{
+    month: number;
+    focus: string;
+    equitySip: number;
+    debtSip: number;
+    projectedCorpus: number;
+  }>;
+  taxSavingMoves: Array<{
+    title: string;
+    detail: string;
+  }>;
+  sensitivity: {
+    lowerReturnAssumption: number;
+    lowerReturnRetirementAge: number;
+  };
 };
 
 export type TaxInputs = {
@@ -132,9 +224,11 @@ export function validateFireInputs(inputs: FireInputs): FireValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const fields: FireValidation["fields"] = {};
+  const currentYear = new Date().getFullYear();
+  const maxExpenseYear = currentYear + Math.max(100 - inputs.age, 0);
   const monthlyIncome = inputs.annualIncome / 12;
   const pushFieldMessage = (
-    key: keyof FireInputs,
+    key: string,
     tone: "errors" | "warnings",
     message: string,
   ) => {
@@ -149,8 +243,8 @@ export function validateFireInputs(inputs: FireInputs): FireValidation {
     pushFieldMessage("age", "errors", message);
   }
 
-  if (inputs.retirementAge <= inputs.age) {
-    const message = "Retirement age must be greater than current age.";
+  if (inputs.retirementAge <= inputs.age + 5) {
+    const message = "Retirement age must be at least 5 years after your current age.";
     errors.push(message);
     pushFieldMessage("retirementAge", "errors", message);
   }
@@ -174,27 +268,43 @@ export function validateFireInputs(inputs: FireInputs): FireValidation {
   }
 
   if (inputs.monthlyExpenses >= monthlyIncome) {
-    const message = "Monthly expenses are at or above monthly income, so the current surplus is very tight.";
-    warnings.push(message);
-    pushFieldMessage("monthlyExpenses", "warnings", message);
+    const message = "Monthly expenses must stay below monthly income for a workable FIRE plan.";
+    errors.push(message);
+    pushFieldMessage("monthlyExpenses", "errors", message);
   }
 
-  if (inputs.currentMonthlySip > monthlyIncome) {
-    const message = "Current SIP cannot realistically exceed your full monthly income.";
+  if (inputs.currentMonthlySip < 0) {
+    const message = "Current monthly SIP cannot be negative.";
     errors.push(message);
     pushFieldMessage("currentMonthlySip", "errors", message);
   }
 
-  if (inputs.currentMonthlySip > Math.max(monthlyIncome - inputs.monthlyExpenses, 0) * 1.6) {
-    const message = "Current SIP is much higher than the visible monthly surplus. Verify income, expenses, or SIP value.";
+  if (inputs.currentMonthlySip > Math.max(monthlyIncome - inputs.monthlyExpenses, 0)) {
+    const message = "Current SIP is higher than the visible monthly surplus from your own income.";
     warnings.push(message);
     pushFieldMessage("currentMonthlySip", "warnings", message);
   }
 
-  if (inputs.targetMonthlyDrawToday < inputs.monthlyExpenses * 0.6) {
+  if (inputs.targetMonthlyDrawToday <= 0) {
+    const message = "Retirement spending target must be greater than zero.";
+    errors.push(message);
+    pushFieldMessage("targetMonthlyDrawToday", "errors", message);
+  } else if (inputs.targetMonthlyDrawToday < inputs.monthlyExpenses * 0.6) {
     const message = "Target retirement spending is much lower than current monthly expenses. Check whether lifestyle costs are understated.";
     warnings.push(message);
     pushFieldMessage("targetMonthlyDrawToday", "warnings", message);
+  }
+
+  if (inputs.preRetirementReturn < 0.06 || inputs.preRetirementReturn > 0.18) {
+    const message = "Expected return is outside the usual 6% to 18% planning range.";
+    warnings.push(message);
+    pushFieldMessage("preRetirementReturn", "warnings", message);
+  }
+
+  if (inputs.inflationRate < 0.03 || inputs.inflationRate > 0.1) {
+    const message = "Inflation is outside the usual 3% to 10% planning range.";
+    warnings.push(message);
+    pushFieldMessage("inflationRate", "warnings", message);
   }
 
   if (inputs.preRetirementReturn <= inputs.inflationRate) {
@@ -204,100 +314,744 @@ export function validateFireInputs(inputs: FireInputs): FireValidation {
   }
 
   if (inputs.safeWithdrawalRate < 0.025 || inputs.safeWithdrawalRate > 0.06) {
-    warnings.push("Safe withdrawal rate is outside the typical 2.5% to 6% range.");
+    const message = "Safe withdrawal rate is outside the typical 2.5% to 6% range.";
+    warnings.push(message);
+    pushFieldMessage("safeWithdrawalRate", "warnings", message);
   }
 
-  if (inputs.currentLifeCover < inputs.liabilities * 0.25) {
-    const message = "Current life cover looks low relative to liabilities and family protection needs.";
+  if (inputs.currentLifeCover > 0 && !inputs.hasPureTermPlan) {
+    const message = "Count life cover only if it is a pure term plan.";
+    errors.push(message);
+    pushFieldMessage("hasPureTermPlan", "errors", message);
+  }
+
+  if (inputs.currentLifeCover < 0) {
+    const message = "Current life cover cannot be negative.";
+    errors.push(message);
+    pushFieldMessage("currentLifeCover", "errors", message);
+  }
+
+  if (inputs.liabilities < 0) {
+    const message = "Outstanding liabilities cannot be negative.";
+    errors.push(message);
+    pushFieldMessage("liabilities", "errors", message);
+  }
+
+  if (inputs.dependents < 0) {
+    const message = "Dependents cannot be negative.";
+    errors.push(message);
+    pushFieldMessage("dependents", "errors", message);
+  }
+
+  inputs.plannedExpenses.forEach((expense, index) => {
+    const amountKey = `plannedExpenses.${index}.amountToday`;
+    const yearKey = `plannedExpenses.${index}.year`;
+    const hasAmount = expense.amountToday > 0;
+    const hasYear = expense.year > 0;
+
+    if (hasAmount !== hasYear) {
+      const message = "Add both an amount and a year for each planned expense.";
+      errors.push(message);
+      pushFieldMessage(hasAmount ? yearKey : amountKey, "errors", message);
+    }
+
+    if (hasAmount && expense.year < currentYear) {
+      const message = `Expense year must be ${currentYear} or later.`;
+      errors.push(message);
+      pushFieldMessage(yearKey, "errors", message);
+    }
+
+    if (hasAmount && expense.year > maxExpenseYear) {
+      const message = `Expense year should stay within the planning horizon up to ${maxExpenseYear}.`;
+      errors.push(message);
+      pushFieldMessage(yearKey, "errors", message);
+    }
+  });
+
+  const currentVisibleSurplus = Math.max(monthlyIncome - inputs.monthlyExpenses, 0);
+
+  if (inputs.currentMonthlySip > currentVisibleSurplus) {
+    const message = "Current SIP is higher than the visible monthly surplus.";
     warnings.push(message);
-    pushFieldMessage("currentLifeCover", "warnings", message);
+    pushFieldMessage("currentMonthlySip", "warnings", message);
   }
 
   return { errors, warnings, fields };
 }
 
 export function computeFirePlan(inputs: FireInputs): FirePlan {
+  const currentYear = new Date().getFullYear();
   const yearsToRetire = Math.max(inputs.retirementAge - inputs.age, 1);
-  const monthsToRetire = yearsToRetire * 12;
-  const monthlyInflation = inputs.inflationRate / 12;
-  const monthlyGrowth = inputs.preRetirementReturn / 12;
-  const targetMonthlyAtRetirement =
-    inputs.targetMonthlyDrawToday * Math.pow(1 + monthlyInflation, monthsToRetire);
-  const targetCorpus =
-    (targetMonthlyAtRetirement * 12) / Math.max(inputs.safeWithdrawalRate, 0.01);
-  const currentCorpus = inputs.currentMfCorpus + inputs.currentPpfCorpus;
-  const projectedCorpusWithoutChanges =
-    currentCorpus * Math.pow(1 + monthlyGrowth, monthsToRetire) +
-    inputs.currentMonthlySip *
-      ((Math.pow(1 + monthlyGrowth, monthsToRetire) - 1) / Math.max(monthlyGrowth, 0.0001));
-
-  const growthFactor = Math.pow(1 + monthlyGrowth, monthsToRetire);
-  const sipFactor = (growthFactor - 1) / Math.max(monthlyGrowth, 0.0001);
-  const requiredSip = Math.max((targetCorpus - currentCorpus * growthFactor) / sipFactor, 0);
-
-  const monthsToTargetOnCurrentPath = solveMonthsToTarget(
-    currentCorpus,
-    inputs.currentMonthlySip,
-    monthlyGrowth,
-    targetCorpus,
+  const retirementYear = currentYear + yearsToRetire;
+  const targetMonthlyAtRetirement = round(
+    inputs.targetMonthlyDrawToday * Math.pow(1 + inputs.inflationRate, yearsToRetire),
   );
-  const estimatedRetirementAgeOnCurrentPath = inputs.age + monthsToTargetOnCurrentPath / 12;
-
-  const emergencyFundTarget = inputs.monthlyExpenses * 6;
-  const emergencyFundGap = Math.max(emergencyFundTarget - inputs.currentPpfCorpus * 0.35, 0);
-  const lifeCoverTarget = inputs.monthlyExpenses * 12 * 20 + inputs.liabilities;
-  const lifeCoverGap = Math.max(lifeCoverTarget - inputs.currentLifeCover, 0);
-
-  const monthByMonth = Array.from({ length: monthsToRetire }, (_, index) => {
-    const month = index + 1;
-    const glide = index / Math.max(monthsToRetire - 1, 1);
-    const equityWeight = Math.max(0.55, 0.8 - glide * 0.2);
-    const debtWeight = 1 - equityWeight;
-    const runningCorpus =
-      currentCorpus * Math.pow(1 + monthlyGrowth, month) +
-      requiredSip * ((Math.pow(1 + monthlyGrowth, month) - 1) / Math.max(monthlyGrowth, 0.0001));
-
-    return {
-      month,
-      age: Number((inputs.age + month / 12).toFixed(1)),
-      equitySip: round(requiredSip * equityWeight),
-      debtSip: round(requiredSip * debtWeight),
-      equityWeight: equityWeight * 100,
-      debtWeight: debtWeight * 100,
-      projectedCorpus: round(runningCorpus),
-    };
+  const targetCorpus = round(
+    (targetMonthlyAtRetirement * 12) / Math.max(inputs.safeWithdrawalRate, 0.01),
+  );
+  const retirementCorpusBase =
+    inputs.currentMfCorpus + inputs.currentPpfCorpus + inputs.epfCorpus;
+  const currentSip = inputs.currentMonthlySip;
+  const plannedExpenseSchedule = normalizePlannedExpenses(
+    inputs.plannedExpenses,
+    inputs.age,
+    currentYear,
+    retirementYear,
+    inputs.inflationRate,
+  );
+  const accumulationExpenses = buildExpenseMap(plannedExpenseSchedule, "accumulation");
+  const retirementExpenses = buildExpenseMap(plannedExpenseSchedule, "retirement");
+  const currentPathAccumulation = simulateAccumulation({
+    initialCorpus: retirementCorpusBase,
+    startAge: inputs.age,
+    startYear: currentYear,
+    years: yearsToRetire,
+    annualReturn: inputs.preRetirementReturn,
+    getMonthlySip: () => currentSip,
+    expenseMap: accumulationExpenses,
   });
+  const requiredSip = round(
+    findRequiredImmediateSip({
+      targetCorpus,
+      initialCorpus: retirementCorpusBase,
+      startAge: inputs.age,
+      startYear: currentYear,
+      yearsToRetire,
+      annualReturn: inputs.preRetirementReturn,
+      expenseMap: accumulationExpenses,
+    }),
+  );
+  const recommendedAccumulation = simulateAccumulation({
+    initialCorpus: retirementCorpusBase,
+    startAge: inputs.age,
+    startYear: currentYear,
+    years: yearsToRetire,
+    annualReturn: inputs.preRetirementReturn,
+    getMonthlySip: () => requiredSip,
+    expenseMap: accumulationExpenses,
+  });
+  const estimatedRetirementAgeOnCurrentPath = solveAgeToTarget({
+    initialCorpus: retirementCorpusBase,
+    startAge: inputs.age,
+    startYear: currentYear,
+    annualReturn: inputs.preRetirementReturn,
+    targetCorpus,
+    monthlySip: currentSip,
+    expenseMap: accumulationExpenses,
+  });
+  const recommendedDrawdown = simulateDrawdown({
+    startingCorpus: recommendedAccumulation.endingCorpus,
+    startAge: inputs.retirementAge,
+    startYear: retirementYear,
+    annualReturn: inputs.postRetirementReturn,
+    inflationRate: inputs.inflationRate,
+    startingAnnualSpend: targetMonthlyAtRetirement * 12,
+    expenseMap: retirementExpenses,
+  });
+  const currentPathDrawdown = simulateDrawdown({
+    startingCorpus: currentPathAccumulation.endingCorpus,
+    startAge: inputs.retirementAge,
+    startYear: retirementYear,
+    annualReturn: inputs.postRetirementReturn,
+    inflationRate: inputs.inflationRate,
+    startingAnnualSpend: targetMonthlyAtRetirement * 12,
+    expenseMap: retirementExpenses,
+  });
+  const emergencyFundTarget = round(inputs.monthlyExpenses * 6);
+  const emergencyFundGap = round(
+    Math.max(emergencyFundTarget - inputs.currentLiquidSavings, 0),
+  );
+  const annualExpenses = inputs.monthlyExpenses * 12;
+  const primaryCoverTarget =
+    inputs.dependents === 0
+      ? round(inputs.liabilities)
+      : round(
+          Math.max(
+            inputs.annualIncome * yearsToRetire +
+              inputs.liabilities +
+              10 * annualExpenses -
+              retirementCorpusBase,
+            0,
+          ),
+        );
+  const primaryMonthlyTakeHome = estimateMonthlyTakeHome(inputs.annualIncome);
+  const projectedPrimaryTakeHomeInYear5 = estimateMonthlyTakeHome(
+    inputs.annualIncome * Math.pow(1 + inputs.annualIncomeGrowthRate, 4),
+  );
+  const projectedMonthlyTakeHomeInYear5 = round(projectedPrimaryTakeHomeInYear5);
+  const requiredSipShare =
+    primaryMonthlyTakeHome > 0 ? requiredSip / primaryMonthlyTakeHome : 0;
+  const projectedSipShareInYear5 =
+    projectedMonthlyTakeHomeInYear5 > 0
+      ? requiredSip / projectedMonthlyTakeHomeInYear5
+      : 0;
+  const stepUpSipPlan = buildStepUpSipPlan({
+    targetCorpus,
+    initialCorpus: retirementCorpusBase,
+    startAge: inputs.age,
+    startYear: currentYear,
+    yearsToRetire,
+    annualReturn: inputs.preRetirementReturn,
+    expenseMap: accumulationExpenses,
+  });
+  const lowerReturnAssumption = Math.max(inputs.preRetirementReturn - 0.02, 0.02);
+  const lowerReturnRetirementAge = solveAgeToTarget({
+    initialCorpus: retirementCorpusBase,
+    startAge: inputs.age,
+    startYear: currentYear,
+    annualReturn: lowerReturnAssumption,
+    targetCorpus,
+    monthlySip: currentSip,
+    expenseMap: accumulationExpenses,
+  });
+  const horizonAge = Math.max(inputs.retirementAge + 20, 90);
+  const glidepath = buildGlidepath(inputs.age, inputs.retirementAge);
+  const sipAllocation = buildSipAllocation(requiredSip, glidepath[0]?.equity ?? 50);
+  const monthlyRoadmap = buildMonthlyRoadmap({
+    initialCorpus: retirementCorpusBase,
+    annualReturn: inputs.preRetirementReturn,
+    requiredSip,
+    sipAllocation,
+    emergencyFundGap,
+    insuranceGap: Math.max(primaryCoverTarget - inputs.currentLifeCover, 0),
+  });
+  const taxSavingMoves = buildTaxSavingMoves(sipAllocation);
 
   return {
     yearsToRetire,
-    targetMonthlyAtRetirement: round(targetMonthlyAtRetirement),
-    targetCorpus: round(targetCorpus),
-    projectedCorpusWithoutChanges: round(projectedCorpusWithoutChanges),
-    requiredSip: round(requiredSip),
-    estimatedRetirementAgeOnCurrentPath: Number(estimatedRetirementAgeOnCurrentPath.toFixed(1)),
-    emergencyFundTarget: round(emergencyFundTarget),
-    emergencyFundGap: round(emergencyFundGap),
-    lifeCoverTarget: round(lifeCoverTarget),
-    lifeCoverGap: round(lifeCoverGap),
-    monthByMonth,
+    retirementYear,
+    targetMonthlyAtRetirement,
+    targetCorpus,
+    projectedCorpusWithoutChanges: round(currentPathAccumulation.endingCorpus),
+    recommendedCorpusAtRetirement: round(recommendedAccumulation.endingCorpus),
+    requiredSip,
+    currentSip: round(currentSip),
+    estimatedRetirementAgeOnCurrentPath,
+    assumptions: {
+      preRetirementReturn: inputs.preRetirementReturn,
+      postRetirementReturn: inputs.postRetirementReturn,
+      inflationRate: inputs.inflationRate,
+      safeWithdrawalRate: inputs.safeWithdrawalRate,
+      incomeGrowthRate: inputs.annualIncomeGrowthRate,
+      retirementDrawToday: inputs.targetMonthlyDrawToday,
+      retirementDrawAtRetirement: targetMonthlyAtRetirement,
+    },
+    emergencyFund: {
+      target: emergencyFundTarget,
+      currentLiquidSavings: round(inputs.currentLiquidSavings),
+      gap: emergencyFundGap,
+      note:
+        inputs.currentLiquidSavings === 0
+          ? "No liquid emergency reserve is currently recorded."
+          : undefined,
+    },
+    insurance: {
+      primaryTarget: primaryCoverTarget,
+      primaryGap: round(Math.max(primaryCoverTarget - inputs.currentLifeCover, 0)),
+    },
+    takeHomeFeasibility: {
+      primaryMonthlyTakeHome: round(primaryMonthlyTakeHome),
+      monthlyTakeHome: round(primaryMonthlyTakeHome),
+      requiredSipShare,
+      projectedMonthlyTakeHomeInYear5,
+      projectedSipShareInYear5,
+      isStretched: requiredSipShare > 0.6,
+    },
+    longevity: {
+      lastsUntilAge: recommendedDrawdown.lastsUntilAge,
+      status: recommendedDrawdown.status,
+      exhaustionAge: recommendedDrawdown.exhaustionAge,
+    },
+    stepUpSipPlan,
+    plannedExpenseSchedule,
+    chartSeries: {
+      horizonAge,
+      currentPath: trimChartSeries(
+        [...currentPathAccumulation.points, ...currentPathDrawdown.points],
+        horizonAge,
+      ),
+      targetPath: trimChartSeries(
+        [...recommendedAccumulation.points, ...recommendedDrawdown.points],
+        horizonAge,
+      ),
+      expenseMarkers: plannedExpenseSchedule.map((expense) => ({
+        age: expense.age,
+        year: expense.year,
+        label: `${expense.year}: ${compactInr(expense.inflatedAmount)}`,
+        phase: expense.phase,
+      })),
+      currentExhaustionAge: currentPathDrawdown.exhaustionAge,
+      targetExhaustionAge: recommendedDrawdown.exhaustionAge,
+    },
+    glidepath,
+    sipAllocation,
+    monthlyRoadmap,
+    taxSavingMoves,
+    sensitivity: {
+      lowerReturnAssumption,
+      lowerReturnRetirementAge,
+    },
   };
 }
 
-function solveMonthsToTarget(
-  currentCorpus: number,
-  monthlySip: number,
-  monthlyGrowth: number,
-  targetCorpus: number,
+function normalizePlannedExpenses(
+  plannedExpenses: PlannedExpenseInput[],
+  currentAge: number,
+  currentYear: number,
+  retirementYear: number,
+  inflationRate: number,
 ) {
-  for (let month = 1; month <= 600; month += 1) {
-    const projected =
-      currentCorpus * Math.pow(1 + monthlyGrowth, month) +
-      monthlySip * ((Math.pow(1 + monthlyGrowth, month) - 1) / Math.max(monthlyGrowth, 0.0001));
-    if (projected >= targetCorpus) {
-      return month;
+  return plannedExpenses
+    .filter((expense) => expense.amountToday > 0 && expense.year > 0)
+    .map((expense) => {
+      const yearsAhead = Math.max(expense.year - currentYear, 0);
+      return {
+        year: expense.year,
+        age: Number((currentAge + yearsAhead).toFixed(1)),
+        amountToday: round(expense.amountToday),
+        inflatedAmount: round(
+          expense.amountToday * Math.pow(1 + inflationRate, yearsAhead),
+        ),
+        phase:
+          expense.year <= retirementYear
+            ? ("accumulation" as const)
+            : ("retirement" as const),
+      };
+    })
+    .sort((left, right) => left.year - right.year);
+}
+
+function buildExpenseMap(
+  expenses: FirePlan["plannedExpenseSchedule"],
+  phase: "accumulation" | "retirement",
+) {
+  return expenses
+    .filter((expense) => expense.phase === phase)
+    .reduce((map, expense) => {
+      map.set(expense.year, (map.get(expense.year) ?? 0) + expense.inflatedAmount);
+      return map;
+    }, new Map<number, number>());
+}
+
+function getMonthlyRate(annualRate: number) {
+  return Math.pow(1 + annualRate, 1 / 12) - 1;
+}
+
+function simulateAccumulation({
+  initialCorpus,
+  startAge,
+  startYear,
+  years,
+  annualReturn,
+  getMonthlySip,
+  expenseMap,
+}: {
+  initialCorpus: number;
+  startAge: number;
+  startYear: number;
+  years: number;
+  annualReturn: number;
+  getMonthlySip: (yearOffset: number) => number;
+  expenseMap: Map<number, number>;
+}) {
+  const monthlyRate = getMonthlyRate(annualReturn);
+  const points: FireChartPoint[] = [
+    { age: startAge, year: startYear, corpus: round(Math.max(initialCorpus, 0)) },
+  ];
+  let corpus = Math.max(initialCorpus, 0);
+
+  for (let yearOffset = 0; yearOffset < years; yearOffset += 1) {
+    const simulationYear = startYear + yearOffset;
+    corpus = Math.max(corpus - (expenseMap.get(simulationYear) ?? 0), 0);
+    const monthlySip = Math.max(getMonthlySip(yearOffset), 0);
+
+    for (let month = 0; month < 12; month += 1) {
+      corpus = corpus * (1 + monthlyRate) + monthlySip;
+    }
+
+    points.push({
+      age: startAge + yearOffset + 1,
+      year: simulationYear + 1,
+      corpus: round(Math.max(corpus, 0)),
+    });
+  }
+
+  return {
+    endingCorpus: Math.max(corpus, 0),
+    points,
+  };
+}
+
+function simulateDrawdown({
+  startingCorpus,
+  startAge,
+  startYear,
+  annualReturn,
+  inflationRate,
+  startingAnnualSpend,
+  expenseMap,
+}: {
+  startingCorpus: number;
+  startAge: number;
+  startYear: number;
+  annualReturn: number;
+  inflationRate: number;
+  startingAnnualSpend: number;
+  expenseMap: Map<number, number>;
+}) {
+  const points: FireChartPoint[] = [];
+  let corpus = Math.max(startingCorpus, 0);
+  let annualSpend = startingAnnualSpend;
+  let exhaustionAge: number | null = null;
+
+  for (let yearOffset = 0; startAge + yearOffset < 100; yearOffset += 1) {
+    const currentAge = startAge + yearOffset;
+    const simulationYear = startYear + yearOffset;
+    corpus = Math.max(corpus - (expenseMap.get(simulationYear) ?? 0), 0);
+
+    if (corpus <= 0) {
+      exhaustionAge = currentAge;
+      points.push({ age: currentAge, year: simulationYear, corpus: 0 });
+      break;
+    }
+
+    corpus = corpus * (1 + annualReturn);
+    corpus -= annualSpend;
+
+    if (corpus <= 0) {
+      exhaustionAge = currentAge + 1;
+      points.push({ age: currentAge + 1, year: simulationYear + 1, corpus: 0 });
+      break;
+    }
+
+    points.push({
+      age: currentAge + 1,
+      year: simulationYear + 1,
+      corpus: round(corpus),
+    });
+
+    annualSpend *= 1 + inflationRate;
+  }
+
+  const lastsUntilAge = exhaustionAge ?? 100;
+  return {
+    points,
+    exhaustionAge,
+    lastsUntilAge,
+    status:
+      lastsUntilAge < 85
+        ? ("critical" as const)
+        : lastsUntilAge < 90
+          ? ("watch" as const)
+          : ("strong" as const),
+  };
+}
+
+function trimChartSeries(points: FireChartPoint[], horizonAge: number) {
+  return points
+    .filter((point) => point.age <= horizonAge)
+    .map((point) => ({ ...point, corpus: Math.max(point.corpus, 0) }));
+}
+
+function solveAgeToTarget({
+  initialCorpus,
+  startAge,
+  startYear,
+  annualReturn,
+  targetCorpus,
+  monthlySip,
+  expenseMap,
+}: {
+  initialCorpus: number;
+  startAge: number;
+  startYear: number;
+  annualReturn: number;
+  targetCorpus: number;
+  monthlySip: number;
+  expenseMap: Map<number, number>;
+}) {
+  if (initialCorpus >= targetCorpus) {
+    return Number(startAge.toFixed(1));
+  }
+
+  const monthlyRate = getMonthlyRate(annualReturn);
+  let corpus = Math.max(initialCorpus, 0);
+  const maxMonths = Math.max(Math.round((100 - startAge) * 12), 12);
+
+  for (let month = 0; month < maxMonths; month += 1) {
+    if (month % 12 === 0) {
+      const simulationYear = startYear + month / 12;
+      corpus = Math.max(corpus - (expenseMap.get(simulationYear) ?? 0), 0);
+      if (corpus >= targetCorpus) {
+        return Number((startAge + month / 12).toFixed(1));
+      }
+    }
+
+    corpus = corpus * (1 + monthlyRate) + monthlySip;
+
+    if (corpus >= targetCorpus) {
+      return Number((startAge + (month + 1) / 12).toFixed(1));
     }
   }
-  return 600;
+
+  return 100;
+}
+
+function findRequiredImmediateSip({
+  targetCorpus,
+  initialCorpus,
+  startAge,
+  startYear,
+  yearsToRetire,
+  annualReturn,
+  expenseMap,
+}: {
+  targetCorpus: number;
+  initialCorpus: number;
+  startAge: number;
+  startYear: number;
+  yearsToRetire: number;
+  annualReturn: number;
+  expenseMap: Map<number, number>;
+}) {
+  const simulate = (monthlySip: number) =>
+    simulateAccumulation({
+      initialCorpus,
+      startAge,
+      startYear,
+      years: yearsToRetire,
+      annualReturn,
+      getMonthlySip: () => monthlySip,
+      expenseMap,
+    }).endingCorpus;
+
+  if (simulate(0) >= targetCorpus) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = 25_000;
+
+  while (simulate(high) < targetCorpus && high < 5_000_000) {
+    high *= 2;
+  }
+
+  for (let step = 0; step < 50; step += 1) {
+    const mid = (low + high) / 2;
+    if (simulate(mid) >= targetCorpus) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  return high;
+}
+
+function buildStepUpSipPlan({
+  targetCorpus,
+  initialCorpus,
+  startAge,
+  startYear,
+  yearsToRetire,
+  annualReturn,
+  expenseMap,
+}: {
+  targetCorpus: number;
+  initialCorpus: number;
+  startAge: number;
+  startYear: number;
+  yearsToRetire: number;
+  annualReturn: number;
+  expenseMap: Map<number, number>;
+}) {
+  const annualIncreaseRate = 0.1;
+  const simulate = (yearOneSip: number) =>
+    simulateAccumulation({
+      initialCorpus,
+      startAge,
+      startYear,
+      years: yearsToRetire,
+      annualReturn,
+      getMonthlySip: (yearOffset) =>
+        yearOneSip * Math.pow(1 + annualIncreaseRate, yearOffset),
+      expenseMap,
+    }).endingCorpus;
+
+  let low = 0;
+  let high = 25_000;
+
+  while (simulate(high) < targetCorpus && high < 5_000_000) {
+    high *= 2;
+  }
+
+  for (let step = 0; step < 50; step += 1) {
+    const mid = (low + high) / 2;
+    if (simulate(mid) >= targetCorpus) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  const yearOneSip = round(high);
+  return {
+    yearOneSip,
+    annualIncreaseRate,
+    yearTenSip: round(yearOneSip * Math.pow(1 + annualIncreaseRate, 9)),
+    reachesTarget: simulate(yearOneSip) >= targetCorpus,
+  };
+}
+
+function estimateMonthlyTakeHome(annualIncome: number) {
+  const taxableIncome = Math.max(annualIncome - 75_000, 0);
+  const taxWithCess = applyNewRegimeSlabs(taxableIncome) * 1.04;
+  return Math.max(annualIncome - taxWithCess, 0) / 12;
+}
+
+function buildGlidepath(currentAge: number, retirementAge: number) {
+  const startEquity = Math.max(100 - currentAge, 50);
+  const checkpoints = [
+    currentAge,
+    Math.min(
+      currentAge + Math.max(Math.round((retirementAge - currentAge) / 3), 1),
+      retirementAge,
+    ),
+    Math.min(
+      currentAge + Math.max(Math.round(((retirementAge - currentAge) * 2) / 3), 2),
+      retirementAge,
+    ),
+    retirementAge,
+  ];
+  const uniquePoints = [...new Set(checkpoints)].filter(
+    (age) => age >= currentAge && age <= retirementAge,
+  );
+
+  return uniquePoints.map((age, index) => {
+    const progress =
+      uniquePoints.length === 1 ? 1 : index / Math.max(uniquePoints.length - 1, 1);
+    const equity = round(startEquity - (startEquity - 50) * progress);
+    const debt = 100 - equity;
+    return {
+      age,
+      ageLabel:
+        age === currentAge
+          ? `${age} yrs (now)`
+          : age === retirementAge
+            ? `${age} yrs (retire)`
+            : `${age} yrs`,
+      equity,
+      debt,
+      action:
+        index === 0
+          ? "Start with the current allocation"
+          : age === retirementAge
+            ? "Shift to retirement income mode"
+            : index === 1
+              ? "First rebalance checkpoint"
+              : "Reduce risk gradually",
+      current: age === currentAge,
+    };
+  });
+}
+
+function buildSipAllocation(totalSip: number, equityWeight: number) {
+  const equityPortion = round(totalSip * (equityWeight / 100));
+  const debtPortion = Math.max(totalSip - equityPortion, 0);
+  const largeCap = round(equityPortion * 0.5);
+  const midCap = round(equityPortion * 0.3);
+  const smallCap = Math.max(equityPortion - largeCap - midCap, 0);
+  const desiredPpf = round(debtPortion * 0.3);
+  const ppf = Math.min(desiredPpf, 12_500);
+  const debtLiquid = Math.max(debtPortion - ppf, 0);
+
+  return {
+    total: round(totalSip),
+    equityWeight,
+    debtWeight: 100 - equityWeight,
+    buckets: [
+      { label: "Large cap equity", amount: largeCap, tone: "purple" as const },
+      { label: "Mid cap equity", amount: midCap, tone: "purple" as const },
+      { label: "Small cap equity", amount: smallCap, tone: "purple" as const },
+      { label: "Debt / liquid fund", amount: debtLiquid, tone: "slate" as const },
+      { label: "PPF", amount: ppf, tone: "slate" as const },
+    ],
+  };
+}
+
+function buildMonthlyRoadmap({
+  initialCorpus,
+  annualReturn,
+  requiredSip,
+  sipAllocation,
+  emergencyFundGap,
+  insuranceGap,
+}: {
+  initialCorpus: number;
+  annualReturn: number;
+  requiredSip: number;
+  sipAllocation: FirePlan["sipAllocation"];
+  emergencyFundGap: number;
+  insuranceGap: number;
+}) {
+  const monthlyRate = getMonthlyRate(annualReturn);
+  const equitySip = round(
+    sipAllocation.buckets
+      .filter((bucket) => bucket.tone === "purple")
+      .reduce((sum, bucket) => sum + bucket.amount, 0),
+  );
+  const debtSip = round(requiredSip - equitySip);
+  let corpus = Math.max(initialCorpus, 0);
+
+  return Array.from({ length: 12 }, (_, index) => {
+    corpus = corpus * (1 + monthlyRate) + requiredSip;
+    const month = index + 1;
+    let focus = "Stay on the planned SIP split and review progress at month end.";
+
+    if (month <= 3 && emergencyFundGap > 0) {
+      focus = `Keep building the emergency fund while you close the ${inr(emergencyFundGap)} reserve gap.`;
+    } else if (month <= 3 && insuranceGap > 0) {
+      focus = `Close the ${inr(insuranceGap)} life-cover gap before increasing lifestyle spending.`;
+    } else if (month <= 6) {
+      focus = "Keep equity and debt contributions on target and avoid breaking the SIP cadence.";
+    } else if (month <= 9) {
+      focus = "Review whether the glidepath still matches your risk capacity and rebalance if needed.";
+    } else {
+      focus = "Prepare the annual review and decide whether to step up SIPs next year.";
+    }
+
+    return {
+      month,
+      focus,
+      equitySip,
+      debtSip,
+      projectedCorpus: round(corpus),
+    };
+  });
+}
+
+function buildTaxSavingMoves(sipAllocation: FirePlan["sipAllocation"]) {
+  const ppfBucket = sipAllocation.buckets.find((bucket) => bucket.label === "PPF");
+  const debtBucket = sipAllocation.buckets.find(
+    (bucket) => bucket.label === "Debt / liquid fund",
+  );
+  const annualPpfContribution = round((ppfBucket?.amount ?? 0) * 12);
+  const annualPpfCap = 150_000;
+
+  return [
+    {
+      title: "Use PPF inside the debt sleeve",
+      detail: `Route ${inr(ppfBucket?.amount ?? 0)} per month into PPF, or about ${inr(annualPpfContribution)} per year, as the tax-efficient part of the debt allocation.`,
+    },
+    {
+      title: "Keep the rest of debt liquid",
+      detail: `Use about ${inr(debtBucket?.amount ?? 0)} per month in debt or liquid funds so the full debt sleeve still matches the required SIP.`,
+    },
+    {
+      title: "Watch the yearly PPF cap",
+      detail: `The current plan keeps the PPF leg within the ${inr(annualPpfCap)} yearly contribution limit while preserving the total SIP split.`,
+    },
+  ];
 }
 
 export function computeTaxPlan(inputs: TaxInputs): TaxResult {
