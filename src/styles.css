@@ -873,6 +873,42 @@ button {
   color: var(--primary);
 }
 
+.site-guardrail,
+.guardrail-note {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 223, 241, 0.92);
+  background: rgba(248, 251, 255, 0.92);
+}
+
+.site-guardrail {
+  margin-top: 22px;
+}
+
+.site-guardrail strong,
+.guardrail-note strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #132542;
+  font-size: 0.92rem;
+}
+
+.site-guardrail p,
+.guardrail-note p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.guardrail-note {
+  margin-top: 18px;
+}
+
+.guardrail-note.compact {
+  padding: 14px 16px;
+  border-radius: 16px;
+}
+
 .planner-page {
   min-height: 100vh;
   background:

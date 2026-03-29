@@ -7,6 +7,9 @@ import {
 } from "./finance";
 import { type MoneyHealthInputs, type MoneyHealthPlan } from "./moneyHealth";
 
+export const AI_FINANCIAL_GUARDRAIL =
+  "AI-generated educational guidance only, not licensed financial advice. Review investment, insurance, and tax decisions with a SEBI-registered advisor or other licensed professional.";
+
 export type FireGuidanceResult = {
   source: "gemini" | "fallback";
   sections: {

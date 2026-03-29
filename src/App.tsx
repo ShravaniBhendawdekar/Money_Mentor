@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AI_FINANCIAL_GUARDRAIL } from "./ai";
 import { FirePlannerPage } from "./firePlanner";
 import { MoneyHealthScorePage } from "./moneyHealthScore";
 
@@ -334,6 +335,10 @@ function LandingPage({
               <strong>Start</strong>
               <button type="button" onClick={onGetStarted}>Get Started</button>
             </div>
+          </div>
+          <div className="container site-guardrail">
+            <strong>Disclaimer</strong>
+            <p>{AI_FINANCIAL_GUARDRAIL}</p>
           </div>
         </footer>
       </main>

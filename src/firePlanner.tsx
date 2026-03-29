@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { generateFireGuidance, type FireGuidanceResult } from "./ai";
+import {
+  AI_FINANCIAL_GUARDRAIL,
+  generateFireGuidance,
+  type FireGuidanceResult,
+} from "./ai";
 import { fireDefaults } from "./data";
 import {
   compactInr,
@@ -577,6 +581,11 @@ export function FirePlannerPage({
                   Back to plan
                 </button>
               ) : null}
+            </div>
+
+            <div className="guardrail-note compact">
+              <strong>Disclaimer</strong>
+              <p>{AI_FINANCIAL_GUARDRAIL}</p>
             </div>
 
             <div className="fire-form-sections">
@@ -1267,6 +1276,10 @@ function GuidancePanel({
         If pre-retirement returns average {formatPercent(plan.sensitivity.lowerReturnAssumption * 100)} instead of{" "}
         {formatPercent(plan.assumptions.preRetirementReturn * 100)}, the current path
         shifts retirement to about age {plan.sensitivity.lowerReturnRetirementAge}.
+      </div>
+      <div className="guardrail-note">
+        <strong>Disclaimer</strong>
+        <p>{guidance?.sections.disclaimer ?? AI_FINANCIAL_GUARDRAIL}</p>
       </div>
     </SectionCard>
   );

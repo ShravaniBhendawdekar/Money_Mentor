@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AI_FINANCIAL_GUARDRAIL,
   generateMoneyHealthGuidance,
   type MoneyHealthGuidanceResult,
 } from "./ai";
@@ -279,13 +280,18 @@ export function MoneyHealthScorePage({
                 and retirement.
               </p>
 
-              <div className="health-sidebar-points">
-                <div className="health-sidebar-pill">6 dimensions</div>
-                <div className="health-sidebar-pill">AI coach summary</div>
-                <div className="health-sidebar-pill">Top actions in priority order</div>
-              </div>
+                <div className="health-sidebar-points">
+                  <div className="health-sidebar-pill">6 dimensions</div>
+                  <div className="health-sidebar-pill">AI coach summary</div>
+                  <div className="health-sidebar-pill">Top actions in priority order</div>
+                </div>
 
-              <div className="fire-sidebar-actions">
+                <div className="guardrail-note compact">
+                  <strong>Disclaimer</strong>
+                  <p>{AI_FINANCIAL_GUARDRAIL}</p>
+                </div>
+
+                <div className="fire-sidebar-actions">
                 <button className="soft-button" type="button" onClick={handleUseDefaults}>
                   Use sample profile
                 </button>
@@ -554,6 +560,10 @@ export function MoneyHealthScorePage({
                       </div>
                     ),
                   )}
+                </div>
+                <div className="guardrail-note compact">
+                  <strong>Disclaimer</strong>
+                  <p>{AI_FINANCIAL_GUARDRAIL}</p>
                 </div>
               </div>
             </section>
